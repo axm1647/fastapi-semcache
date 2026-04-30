@@ -1,3 +1,6 @@
+from .config import get_cache_settings
+
+
 class SemanticCache:
     """
     Semantic caching engine:
@@ -10,13 +13,15 @@ class SemanticCache:
 
     def __init__(
         self,
-        threshold: float = 0.9,
-        vector_uri: str = "postgresql://user:pass@localhost:5433/semanticcache",
-        redis_uri: str = "redis://localhost:6379/0",
+        threshold: float | None = None,
+        pg_uri: str | None = None,
+        redis_uri: str | None = None,
     ) -> None:
-        self.threshold = threshold
-        self.vector_uri = vector_uri
-        self.redis_uri = redis_uri
+        settings = get_cache_settings()
+
+        self.threshold = threshold if threshold is not None else settings.threshold
+        self.pg_uri = pg_uri if pg_uri is not None else settings.pg_uri
+        self.redis_uri = redis_uri if redis_uri is not None else settings.redis_uri
 
     async def get(self):
         raise NotImplementedError()
