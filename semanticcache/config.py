@@ -33,5 +33,5 @@ class CacheSettings(BaseSettings):
 
 
 @lru_cache(maxsize=1)
-def get_cache_settings():
+def get_cache_settings() -> CacheSettings:
     return CacheSettings()
