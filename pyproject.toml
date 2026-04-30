@@ -1,0 +1,16 @@
+[project]
+name = "semanticcache"
+version = "0.1.0"
+description = "Framework-agnostic semantic caching for APIs & LLMs"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi[standard]>=0.136.1",
+    "psycopg>=3.3.3",
+    "pydantic-settings>=2.14.0",
+    "redis>=7.4.0",
+]
+
+[project.optional-dependencies]
+embed-local = ["sentence-transformers>=3.0"]
+embed-openai = ["openai>=1.40", "tiktoken>=0.7"]
