@@ -1,14 +1,18 @@
 # pyright: reportCallIssue=false
 
 from functools import lru_cache
-from typing import Literal
+from typing import ClassVar, Literal
 
 from pydantic import Field
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class CacheSettings(BaseSettings):
-    model_config = {"env_prefix": "SEMANTIC_CACHE_"}
+    model_config: ClassVar[SettingsConfigDict] = SettingsConfigDict(
+        env_prefix="SEMANTIC_CACHE_",
+        env_file=".env",
+        env_file_encoding="utf-8",
+    )
 
     threshold: float = Field(
         0.90,
@@ -27,9 +31,6 @@ class CacheSettings(BaseSettings):
     pg_pool_max_overflow: int = 20
 
     embedder_type: Literal["local", "openai"] = "local"
-
-    class Config:
-        env_file = ".env"  # optional env for openai API usage
 
 
 @lru_cache(maxsize=1)
