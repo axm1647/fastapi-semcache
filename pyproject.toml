@@ -35,8 +35,12 @@ dependencies = [
     "redis>=7.4.0",
 ]
 
+# embed-local-cpu and embed-local-gpu list the same packages. Pip pulls CPU PyTorch
+# wheels from PyPI by default. For CUDA builds, pass PyTorch's wheel index (README).
 [project.optional-dependencies]
-embed-local = ["sentence-transformers>=3.0"]
+embed-local-cpu = ["sentence-transformers>=3.0", "torch>=2.1.0"]
+embed-local-gpu = ["sentence-transformers>=3.0", "torch>=2.1.0"]
+embed-local = ["sentence-transformers>=3.0", "torch>=2.1.0"]
 embed-openai = ["openai>=1.40", "tiktoken>=0.7"]
 
 [project.urls]

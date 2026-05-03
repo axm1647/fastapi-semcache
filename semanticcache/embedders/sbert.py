@@ -24,12 +24,14 @@ def _require_sentence_transformers():
     try:
         from sentence_transformers import SentenceTransformer as ST
     except ImportError as exc:
-        raise ImportError(
-            (
-                "SBERTEmbedder requires optional dependencies. Install with: "
-                "pip install 'semanticcache-py[embed-local]'"
-            )
-        ) from exc
+        _missing = (
+            "SBERTEmbedder requires optional dependencies. CPU: pip install "
+            "'semanticcache-py[embed-local-cpu]'. GPU (CUDA PyTorch): pip install "
+            "'semanticcache-py[embed-local-gpu]' with --extra-index-url from "
+            "https://pytorch.org/get-started/locally/ (see README). Shorthand for "
+            "CPU: pip install 'semanticcache-py[embed-local]'."
+        )
+        raise ImportError(_missing) from exc
     return ST
 
 

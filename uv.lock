@@ -1573,6 +1573,15 @@ dependencies = [
 [package.optional-dependencies]
 embed-local = [
     { name = "sentence-transformers" },
+    { name = "torch" },
+]
+embed-local-cpu = [
+    { name = "sentence-transformers" },
+    { name = "torch" },
+]
+embed-local-gpu = [
+    { name = "sentence-transformers" },
+    { name = "torch" },
 ]
 embed-openai = [
     { name = "openai" },
@@ -1588,9 +1597,14 @@ requires-dist = [
     { name = "pydantic-settings", specifier = ">=2.14.0" },
     { name = "redis", specifier = ">=7.4.0" },
     { name = "sentence-transformers", marker = "extra == 'embed-local'", specifier = ">=3.0" },
+    { name = "sentence-transformers", marker = "extra == 'embed-local-cpu'", specifier = ">=3.0" },
+    { name = "sentence-transformers", marker = "extra == 'embed-local-gpu'", specifier = ">=3.0" },
     { name = "tiktoken", marker = "extra == 'embed-openai'", specifier = ">=0.7" },
+    { name = "torch", marker = "extra == 'embed-local'", specifier = ">=2.1.0" },
+    { name = "torch", marker = "extra == 'embed-local-cpu'", specifier = ">=2.1.0" },
+    { name = "torch", marker = "extra == 'embed-local-gpu'", specifier = ">=2.1.0" },
 ]
-provides-extras = ["embed-local", "embed-openai"]
+provides-extras = ["embed-local-cpu", "embed-local-gpu", "embed-local", "embed-openai"]
 
 [[package]]
 name = "sentence-transformers"
