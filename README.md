@@ -14,7 +14,32 @@ It fits performance-sensitive API and LLM workloads where low latency and predic
 
 - **Local embeddings** (Sentence Transformers): supported via `embedder_type='local'` and the `embed-local*` extras.
 - **PostgreSQL + pgvector** and **Redis** response caching: supported (see `SemanticCache` and settings).
+- **Reverse proxy**: `create_semantic_cache_proxy_app()` exposes a FastAPI app that forwards HTTP requests to a configurable upstream URL with the same semantic caching behavior as `SemanticCacheMiddleware` on your own app.
 - **OpenAI embeddings**: **not implemented yet.** Choosing `embedder_type='openai'` will raise until an OpenAI embedder is added. The `embed-openai` extra only installs optional dependencies (`openai`, `tiktoken`) for when that support exists or for your own wiring.
+
+### Reverse proxy
+
+Point clients at the proxy; configure Postgres, Redis, and the backend base URL. Example:
+
+```python
+from semanticcache import SemanticCache, create_semantic_cache_proxy_app
+
+cache = SemanticCache()
+app = create_semantic_cache_proxy_app(
+    upstream="http://127.0.0.1:11434",
+    cache=cache,
+)
+
+# uvicorn mymodule:app --host 0.0.0.0 --port 8080
+```
+
+This repository includes a small ASGI app at `app/main.py` (import `app` for uvicorn). Set **`SEMANTIC_CACHE_PROXY_UPSTREAM`** to the backend base URL (default `http://127.0.0.1:11434`). Example:
+
+```bash
+uv run uvicorn app.main:app --host 0.0.0.0 --port 8080
+```
+
+See `create_semantic_cache_proxy_app` in `semanticcache.proxy` for timeout, TLS verification, `httpx_client_kwargs` (for example a mock `transport` in tests), and middleware options (`path_prefix`, `extract_query`, etc.).
 
 ## Install
 
