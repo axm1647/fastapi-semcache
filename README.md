@@ -23,6 +23,12 @@ It includes **FastAPI** middleware as a first-class integration path and can als
 - **OpenAI embeddings are not implemented yet.**
 - `embed-openai` only installs optional dependencies (`openai`, `tiktoken`) for future support or custom wiring.
 
+# Future support
+- Embeddings from the following providers will be supported in future:
+  - Cohere
+  - Voyage
+  - OpenAI
+
 ## Quick start
 
 ```python
