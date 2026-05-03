@@ -19,7 +19,7 @@ def get_embedder(settings: CacheSettings | None = None) -> BaseEmbedder:
         A ``BaseEmbedder`` instance.
 
     Raises:
-        NotImplementedError: If ``embedder_type`` is not supported yet.
+        NotSupportedEmbedderException: If ``embedder_type`` is not supported.
     """
     resolved = settings if settings is not None else get_cache_settings()
     if resolved.embedder_type == "local":
