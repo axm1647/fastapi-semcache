@@ -285,12 +285,7 @@ class SemanticCacheMiddleware(BaseHTTPMiddleware):
             response = await call_next(request)
             miss = self._miss_headers()
 
-            if response.status_code != 200:
-                self._merge_response_headers(response, miss)
-                return response
-
-            content_type = (response.headers.get("content-type") or "").lower()
-            if "application/json" not in content_type:
+            if not (200 <= response.status_code < 300):
                 self._merge_response_headers(response, miss)
                 return response
 
@@ -321,6 +316,9 @@ class SemanticCacheMiddleware(BaseHTTPMiddleware):
                 background=response.background,
             )
 
+            # Persist JSON objects on success. Do not require a JSON Content-Type: many
+            # servers omit the header or use nonstandard values; the old check for the
+            # substring application/json skipped put() entirely.
             if isinstance(payload, dict):
                 try:
                     await self._cache.put(query, payload, model=model)
