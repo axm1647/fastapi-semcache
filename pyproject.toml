@@ -52,3 +52,8 @@ Issues = "https://github.com/axm1647/SemanticCache-py/issues"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["semanticcache*"]
+
+[tool.basedpyright]
+include = ["semanticcache"]
+pythonVersion = "3.12"
+typeCheckingMode = "strict"
