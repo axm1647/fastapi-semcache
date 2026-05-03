@@ -19,7 +19,7 @@ class CacheSettings(BaseSettings):
         description="Similarity threshold for cache hit (0.0–1.0)",
     )
     pg_uri: str = Field(
-        "postgresql://user:pass@localhost:5433/semanticcache",
+        "postgresql://user:pass@localhost:5432/semanticcache",
         description="PostgreSQL URI with pgvector extension",
     )
     redis_uri: str = Field(
