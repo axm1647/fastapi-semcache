@@ -1,9 +1,32 @@
+[build-system]
+requires = ["setuptools>=77.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
-name = "semanticcache"
+name = "semanticcache-py"
 version = "0.1.0"
 description = "Framework-agnostic semantic caching for APIs & LLMs"
 readme = "README.md"
 requires-python = ">=3.12"
+license = "Apache-2.0"
+keywords = [
+    "cache",
+    "embedding",
+    "llm",
+    "pgvector",
+    "redis",
+    "semantic-cache",
+    "vector",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
 dependencies = [
     "fastapi[standard]>=0.136.1",
     "psycopg[binary]>=3.3.3",
@@ -15,3 +38,12 @@ dependencies = [
 [project.optional-dependencies]
 embed-local = ["sentence-transformers>=3.0"]
 embed-openai = ["openai>=1.40", "tiktoken>=0.7"]
+
+[project.urls]
+Homepage = "https://github.com/axm1647/SemanticCache-py"
+Repository = "https://github.com/axm1647/SemanticCache-py"
+Issues = "https://github.com/axm1647/SemanticCache-py/issues"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["semanticcache*"]
