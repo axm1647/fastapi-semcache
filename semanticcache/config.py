@@ -26,6 +26,10 @@ class CacheSettings(BaseSettings):
         "redis://localhost:6379/0",
         description="Redis URI for cache TTL",
     )
+    redis_ttl_seconds: int = Field(
+        3600,
+        description="Default TTL for Redis-cached responses (seconds)",
+    )
 
     pg_pool_size: int = 10
     pg_pool_max_overflow: int = 20
