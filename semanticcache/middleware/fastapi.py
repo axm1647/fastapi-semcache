@@ -6,10 +6,11 @@ import asyncio
 import json
 import logging
 from collections.abc import Awaitable, Callable, MutableMapping, Sequence
+from typing import cast
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
-from starlette.responses import JSONResponse, Response
+from starlette.responses import JSONResponse, Response, StreamingResponse
 from starlette.types import ASGIApp
 
 from semanticcache.cache import SemanticCache
@@ -290,7 +291,14 @@ class SemanticCacheMiddleware(BaseHTTPMiddleware):
                 return response
 
             chunks: list[bytes] = []
-            async for chunk in response.body_iterator:
+            stream_resp = cast(StreamingResponse, response)
+            # BaseHTTPMiddleware.call_next wraps the route response so the body is
+            # exposed as body_iterator (typed on StreamingResponse).
+            async for chunk in stream_resp.body_iterator:
+                if isinstance(chunk, str):
+                    chunk = chunk.encode(stream_resp.charset)
+                elif isinstance(chunk, memoryview):
+                    chunk = bytes(chunk)
                 chunks.append(chunk)
             buffered = b"".join(chunks)
 
