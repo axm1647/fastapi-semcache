@@ -2,9 +2,9 @@
 
 # pyright: reportImplicitStringConcatenation=false
 
-from semanticcache.config import CacheSettings, get_cache_settings
-from semanticcache.embedders.base import BaseEmbedder
-from semanticcache.embedders.sbert import SBERTEmbedder
+from ..config import CacheSettings, get_cache_settings
+from .base import BaseEmbedder
+from .sbert import SBERTEmbedder
 
 
 def get_embedder(settings: CacheSettings | None = None) -> BaseEmbedder:

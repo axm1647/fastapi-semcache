@@ -10,7 +10,7 @@ from typing import Self
 from psycopg.types.json import Json
 from psycopg_pool import AsyncConnectionPool
 
-from semanticcache.types import CacheEntry
+from ...types import CacheEntry
 
 
 def _vector_literal(embedding: list[float]) -> str:
@@ -147,7 +147,6 @@ class AsyncPgVectorStore:
             LIMIT 1
             """
         async with self._pool.connection() as conn:
-
             async with conn.cursor() as cur:
                 _ = await cur.execute(stmt, (vec, vec))
                 row = await cur.fetchone()

@@ -9,16 +9,16 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
 from contextlib import asynccontextmanager
+from typing import Any
 from urllib.parse import urlparse
 
 import httpx
 from fastapi import FastAPI, Request
 from starlette.responses import Response
 
-from semanticcache.cache import SemanticCache
-from semanticcache.middleware.fastapi import SemanticCacheMiddleware
+from .cache import SemanticCache
+from .middleware.fastapi import SemanticCacheMiddleware
 
 _logger = logging.getLogger(__name__)
 

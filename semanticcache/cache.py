@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from typing import Literal, TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
-from semanticcache.config import get_cache_settings
-from semanticcache.embedders import BaseEmbedder, get_embedder
-from semanticcache.stores import AsyncPgVectorStore, RedisResponseStore
-from semanticcache.types import CacheResult
+from .config import get_cache_settings
+from .embedders import BaseEmbedder, get_embedder
+from .stores import AsyncPgVectorStore, RedisResponseStore
+from .types import CacheResult
 
 if TYPE_CHECKING:
     from semanticcache.config import CacheSettings

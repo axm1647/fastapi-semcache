@@ -18,8 +18,8 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response, StreamingResponse
 from starlette.types import ASGIApp
 
-from semanticcache.cache import SemanticCache
-from semanticcache.types import CacheResult
+from ..cache import SemanticCache
+from ..types import CacheResult
 
 _logger = logging.getLogger(__name__)
 
@@ -147,9 +147,7 @@ class SemanticCacheMiddleware(BaseHTTPMiddleware):
         self._flight_lock_registry = asyncio.Lock()
         self._flight_locks = {}
 
-    async def _get_flight_lock(
-        self, query: str, model: str | None
-    ) -> asyncio.Lock:
+    async def _get_flight_lock(self, query: str, model: str | None) -> asyncio.Lock:
         """Return the async lock that serializes miss handling for one cache key.
 
         Args:

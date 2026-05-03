@@ -9,7 +9,7 @@ from __future__ import annotations
 import asyncio
 from typing import cast, final, override
 
-from semanticcache.embedders.base import BaseEmbedder
+from .base import BaseEmbedder
 
 
 def _require_sentence_transformers():

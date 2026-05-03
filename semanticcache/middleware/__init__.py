@@ -1,6 +1,6 @@
 """HTTP middleware for semantic caching."""
 
-from semanticcache.middleware.fastapi import (
+from .fastapi import (
     SemanticCacheMiddleware,
     default_extract_query,
 )
