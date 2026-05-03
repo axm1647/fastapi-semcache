@@ -1,0 +1,116 @@
+"""Minimal Redis JSON blob store for cached HTTP-like responses."""
+
+# pyright: reportAny=false
+# pyright: reportUnknownVariableType=false
+
+from __future__ import annotations
+
+import json
+from typing import Self
+
+import redis.asyncio as redis_async
+
+
+class RedisResponseStore:
+    """GET/SET JSON-serializable dicts under a stable key prefix with optional TTL."""
+
+    _key_prefix: str
+    _default_ttl_seconds: int | None
+    _redis_uri: str
+    _client: redis_async.Redis | None
+
+    def __init__(
+        self,
+        redis_uri: str,
+        *,
+        key_prefix: str = "semanticcache:resp:",
+        default_ttl_seconds: int | None = None,
+    ) -> None:
+        """Attach to Redis using a shared-async client.
+
+        Args:
+            redis_uri: Connection URL for ``redis.asyncio.from_url``.
+            key_prefix: Prepended to every logical ``key`` from ``get``/``put``.
+            default_ttl_seconds: Used when ``put`` is called without ``ttl_seconds``.
+                If both are omitted, keys persist until explicitly overwritten.
+        """
+        self._key_prefix = key_prefix
+        self._default_ttl_seconds = default_ttl_seconds
+        self._redis_uri = redis_uri
+        self._client = None
+
+    def _client_or_create(self) -> redis_async.Redis:
+        if self._client is None:
+            self._client = redis_async.from_url(
+                self._redis_uri,
+                decode_responses=True,
+            )
+        return self._client
+
+    def _full_key(self, key: str) -> str:
+        return f"{self._key_prefix}{key}"
+
+    async def open(self) -> None:
+        """Ensure the Redis client is constructed (optional convenience)."""
+        _ = self._client_or_create()
+
+    async def close(self) -> None:
+        """Release the Redis connection."""
+        if self._client is not None:
+            await self._client.aclose()
+            self._client = None
+
+    async def __aenter__(self) -> Self:
+        """Open client for async context manager usage."""
+        await self.open()
+        return self
+
+    async def __aexit__(self, exc_type: object, exc: object, tb: object) -> None:
+        """Close Redis when leaving the context."""
+        await self.close()
+
+    async def get(self, key: str) -> dict[str, object] | None:
+        """Load a JSON object stored under the prefixed key.
+
+        Args:
+            key: Logical key without the configured prefix.
+
+        Returns:
+            Parsed dict if present; ``None`` on cache miss.
+        """
+        r = self._client_or_create()
+        raw = await r.get(self._full_key(key))
+        if raw is None:
+            return None
+        data = json.loads(raw)
+        if not isinstance(data, dict):
+            msg = "Redis payload must be a JSON object at the top level"
+            raise TypeError(msg)
+        return data
+
+    async def put(
+        self,
+        key: str,
+        value: dict[str, object],
+        *,
+        ttl_seconds: int | None = None,
+    ) -> None:
+        """Serialize ``value`` to JSON and store it under the prefixed key.
+
+        Args:
+            key: Logical key without the configured prefix.
+            value: JSON-serializable object (stored as a JSON object).
+            ttl_seconds: Expiry in seconds. Falls back to ``default_ttl_seconds``;
+                if still unset, the key has no TTL.
+
+        Raises:
+            TypeError: If stored JSON round-trip does not yield a ``dict``.
+        """
+        r = self._client_or_create()
+        ttl = ttl_seconds if ttl_seconds is not None else self._default_ttl_seconds
+        payload = json.dumps(value, separators=(",", ":"), ensure_ascii=False)
+        fk = self._full_key(key)
+        if ttl is not None and ttl > 0:
+            await r.set(fk, payload, ex=int(ttl))
+        else:
+            await r.set(fk, payload)
