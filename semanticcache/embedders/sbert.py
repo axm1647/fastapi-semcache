@@ -27,7 +27,7 @@ def _require_sentence_transformers():
         raise ImportError(
             (
                 "SBERTEmbedder requires optional dependencies. Install with: "
-                "pip install 'semanticcache[embed-local]'"
+                "pip install 'semanticcache-py[embed-local]'"
             )
         ) from exc
     return ST
