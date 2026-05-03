@@ -3,7 +3,9 @@
 # pyright: reportImplicitStringConcatenation=false
 
 from ..config import CacheSettings, get_cache_settings
+from ..exceptions import NotSupportedEmbedderException
 from .base import BaseEmbedder
+from .openai import OpenAIEmbedder
 from .sbert import SBERTEmbedder
 
 
@@ -23,14 +25,11 @@ def get_embedder(settings: CacheSettings | None = None) -> BaseEmbedder:
     if resolved.embedder_type == "local":
         return SBERTEmbedder()
     if resolved.embedder_type == "openai":
-        raise NotImplementedError(
-            "OpenAI embedder is not implemented yet; use embedder_type='local' "
-            "or install and wire OpenAIEmbedder when available."
-        )
+        return OpenAIEmbedder()
+    raise NotSupportedEmbedderException(
+        "This embeddings option is not supported. "
+        "Please check README for available embedding options."
+    )
 
 
-__all__ = [
-    "BaseEmbedder",
-    "SBERTEmbedder",
-    "get_embedder",
-]
+__all__: list[str] = ["BaseEmbedder", "SBERTEmbedder", "get_embedder", "OpenAIEmbedder"]
