@@ -1,5 +1,7 @@
 """Pluggable embedding backends."""
 
+# pyright: reportImplicitStringConcatenation=false
+
 from semanticcache.config import CacheSettings, get_cache_settings
 from semanticcache.embedders.base import BaseEmbedder
 from semanticcache.embedders.sbert import SBERTEmbedder
