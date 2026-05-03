@@ -12,6 +12,7 @@ class CacheSettings(BaseSettings):
         env_prefix="SEMANTIC_CACHE_",
         env_file=".env",
         env_file_encoding="utf-8",
+        extra="ignore",
     )
 
     threshold: float = Field(
