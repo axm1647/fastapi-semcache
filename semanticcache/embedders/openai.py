@@ -1,6 +1,6 @@
 from typing import override
 
-from .base import BaseEmbedder
+from ._base import BaseEmbedder
 
 
 def _require_openai():

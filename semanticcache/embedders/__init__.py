@@ -4,7 +4,7 @@
 
 from ..config import CacheSettings, get_cache_settings
 from ..exceptions import NotSupportedEmbedderException
-from .base import BaseEmbedder
+from ._base import BaseEmbedder
 from .openai import OpenAIEmbedder
 from .sbert import SBERTEmbedder
 
