@@ -9,9 +9,9 @@ from semanticcache.embedders import BaseEmbedder, get_embedder
 from semanticcache.stores import AsyncPgVectorStore, RedisResponseStore
 from semanticcache.types import CacheResult
 
-
 if TYPE_CHECKING:
     from semanticcache.config import CacheSettings
+
 
 def _embed_source(
     settings: "CacheSettings",
