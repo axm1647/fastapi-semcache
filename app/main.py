@@ -9,7 +9,11 @@ from fastapi import FastAPI
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from semanticcache import SemanticCache, create_semantic_cache_proxy_app, get_cache_settings
+from semanticcache import (
+    SemanticCache,
+    create_semantic_cache_proxy_app,
+    get_cache_settings,
+)
 
 
 class ProxyAppSettings(BaseSettings):
