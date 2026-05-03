@@ -37,7 +37,7 @@ class OpenAIEmbedder(BaseEmbedder):
         OpenAI embedding models don't expose a normalize param so this doesn't do anything.
         It is kept to stay consistent with SBERTEmbedder()
         """
-        openai, tiktoken = _require_openai()
+        _ = _require_openai()
         raise NotImplementedError()
 
     @override
