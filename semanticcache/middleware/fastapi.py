@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from collections.abc import Awaitable, Callable, MutableMapping, Sequence
 
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -12,6 +13,8 @@ from starlette.types import ASGIApp
 
 from semanticcache.cache import SemanticCache
 from semanticcache.types import CacheResult
+
+_logger = logging.getLogger(__name__)
 
 
 def _extract_query_from_mapping(data: dict[str, object]) -> str | None:
@@ -201,6 +204,10 @@ class SemanticCacheMiddleware(BaseHTTPMiddleware):
 
         Returns:
             Response from cache, or from the downstream app (possibly with MISS headers).
+
+        Note:
+            If storing a cache entry fails after the route returned a successful JSON
+            body, the error is logged and that body is still returned to the client.
         """
         if not self._enabled:
             return await call_next(request)
@@ -272,6 +279,11 @@ class SemanticCacheMiddleware(BaseHTTPMiddleware):
         )
 
         if isinstance(payload, dict):
-            await self._cache.put(query, payload, model=model)
+            try:
+                await self._cache.put(query, payload, model=model)
+            except Exception:
+                _logger.exception(
+                    "Semantic cache write failed; returning upstream response unchanged."
+                )
 
         return final
