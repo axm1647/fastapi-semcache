@@ -1,6 +1,9 @@
 """FastAPI / Starlette HTTP middleware for semantic response caching."""
 
 # pyright: reportAny=false
+# pyright: reportUnknownMemberType=false
+# pyright: reportUnknownVariableType=false
+# pyright: reportUnknownArgumentType=false
 
 from __future__ import annotations
 
