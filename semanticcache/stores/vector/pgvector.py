@@ -147,7 +147,7 @@ class AsyncPgVectorStore:
             LIMIT 1
             """
         async with self._pool.connection() as conn:
-            
+
             async with conn.cursor() as cur:
                 _ = await cur.execute(stmt, (vec, vec))
                 row = await cur.fetchone()
