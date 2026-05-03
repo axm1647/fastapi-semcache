@@ -2,6 +2,7 @@
 
 from semanticcache.cache import SemanticCache
 from semanticcache.config import get_cache_settings
+from semanticcache.middleware import SemanticCacheMiddleware
 from semanticcache.types import CacheEntry, CacheQuery, CacheResult
 
 __all__: list[str] = [
@@ -9,5 +10,6 @@ __all__: list[str] = [
     "CacheQuery",
     "CacheResult",
     "SemanticCache",
+    "SemanticCacheMiddleware",
     "get_cache_settings",
 ]
