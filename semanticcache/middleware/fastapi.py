@@ -1,12 +1,14 @@
 """FastAPI / Starlette HTTP middleware for semantic response caching."""
 
+# pyright: reportAny=false
+
 from __future__ import annotations
 
 import asyncio
 import json
 import logging
 from collections.abc import Awaitable, Callable, MutableMapping, Sequence
-from typing import cast
+from typing import cast, override
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -222,6 +224,7 @@ class SemanticCacheMiddleware(BaseHTTPMiddleware):
         for key, value in extra.items():
             response.headers[key] = value
 
+    @override
     async def dispatch(
         self,
         request: Request,
