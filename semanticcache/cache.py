@@ -8,7 +8,7 @@ class SemanticCache:
     """
 
     threshold: float
-    vector_uri: str
+    pg_uri: str
     redis_uri: str
 
     def __init__(
