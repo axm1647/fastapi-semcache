@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from collections.abc import Awaitable, Callable, MutableMapping, Sequence
@@ -80,7 +81,12 @@ async def default_extract_query(request: Request, body: bytes) -> str | None:
 
 
 class SemanticCacheMiddleware(BaseHTTPMiddleware):
-    """Intercept requests, serve semantic cache hits, and populate the cache on miss."""
+    """Intercept requests, serve semantic cache hits, and populate the cache on miss.
+
+    Concurrent requests with the same extracted query (and model key) coordinate so
+    only one runs the downstream handler on miss; others observe a cache hit after the
+    leader stores the entry (async lock per key, double-checked get).
+    """
 
     _HEADER_CACHE: str = "X-Cache"
     _HEADER_SIMILARITY: str = "X-Cache-Similarity"
@@ -93,6 +99,8 @@ class SemanticCacheMiddleware(BaseHTTPMiddleware):
     _extract_query: Callable[[Request, bytes], Awaitable[str | None]]
     _extract_model: Callable[[Request, bytes], Awaitable[str | None]] | None
     _model_header_name: str
+    _flight_lock_registry: asyncio.Lock
+    _flight_locks: dict[tuple[str, str | None], asyncio.Lock]
 
     def __init__(
         self,
@@ -130,6 +138,28 @@ class SemanticCacheMiddleware(BaseHTTPMiddleware):
         self._extract_query = extract_query
         self._extract_model = extract_model
         self._model_header_name = model_header_name
+        self._flight_lock_registry = asyncio.Lock()
+        self._flight_locks = {}
+
+    async def _get_flight_lock(
+        self, query: str, model: str | None
+    ) -> asyncio.Lock:
+        """Return the async lock that serializes miss handling for one cache key.
+
+        Args:
+            query: Extracted cache key text.
+            model: Optional model discriminator (must match ``cache.get`` / ``put``).
+
+        Returns:
+            Async lock for this ``(query, model)`` tuple.
+        """
+        key = (query, model)
+        async with self._flight_lock_registry:
+            lock = self._flight_locks.get(key)
+            if lock is None:
+                lock = asyncio.Lock()
+                self._flight_locks[key] = lock
+            return lock
 
     async def _default_extract_model(self, request: Request, body: bytes) -> str | None:
         """Read model from header or JSON body.
@@ -208,6 +238,10 @@ class SemanticCacheMiddleware(BaseHTTPMiddleware):
         Note:
             If storing a cache entry fails after the route returned a successful JSON
             body, the error is logged and that body is still returned to the client.
+
+            For the same ``(query, model)``, concurrent misses are serialized: waiters
+            re-check the cache after the leader finishes and usually avoid duplicate
+            upstream work.
         """
         if not self._enabled:
             return await call_next(request)
@@ -239,51 +273,60 @@ class SemanticCacheMiddleware(BaseHTTPMiddleware):
                 headers=self._hit_headers(result),
             )
 
-        response = await call_next(request)
-        miss = self._miss_headers()
+        flight = await self._get_flight_lock(query, model)
+        async with flight:
+            result = await self._cache.get(query, model=model)
+            if result.is_hit and result.response is not None:
+                return JSONResponse(
+                    content=result.response,
+                    headers=self._hit_headers(result),
+                )
 
-        if response.status_code != 200:
-            self._merge_response_headers(response, miss)
-            return response
+            response = await call_next(request)
+            miss = self._miss_headers()
 
-        content_type = (response.headers.get("content-type") or "").lower()
-        if "application/json" not in content_type:
-            self._merge_response_headers(response, miss)
-            return response
+            if response.status_code != 200:
+                self._merge_response_headers(response, miss)
+                return response
 
-        chunks: list[bytes] = []
-        async for chunk in response.body_iterator:
-            chunks.append(chunk)
-        buffered = b"".join(chunks)
+            content_type = (response.headers.get("content-type") or "").lower()
+            if "application/json" not in content_type:
+                self._merge_response_headers(response, miss)
+                return response
 
-        try:
-            payload: object = json.loads(buffered)
-        except json.JSONDecodeError:
-            out = Response(
+            chunks: list[bytes] = []
+            async for chunk in response.body_iterator:
+                chunks.append(chunk)
+            buffered = b"".join(chunks)
+
+            try:
+                payload: object = json.loads(buffered)
+            except json.JSONDecodeError:
+                out = Response(
+                    content=buffered,
+                    status_code=response.status_code,
+                    headers=dict(response.headers),
+                    media_type=response.media_type,
+                    background=response.background,
+                )
+                self._merge_response_headers(out, miss)
+                return out
+
+            merged_headers = {**dict(response.headers), **miss}
+            final = Response(
                 content=buffered,
                 status_code=response.status_code,
-                headers=dict(response.headers),
+                headers=merged_headers,
                 media_type=response.media_type,
                 background=response.background,
             )
-            self._merge_response_headers(out, miss)
-            return out
 
-        merged_headers = {**dict(response.headers), **miss}
-        final = Response(
-            content=buffered,
-            status_code=response.status_code,
-            headers=merged_headers,
-            media_type=response.media_type,
-            background=response.background,
-        )
+            if isinstance(payload, dict):
+                try:
+                    await self._cache.put(query, payload, model=model)
+                except Exception:
+                    _logger.exception(
+                        "Semantic cache write failed; returning upstream response unchanged."
+                    )
 
-        if isinstance(payload, dict):
-            try:
-                await self._cache.put(query, payload, model=model)
-            except Exception:
-                _logger.exception(
-                    "Semantic cache write failed; returning upstream response unchanged."
-                )
-
-        return final
+            return final
