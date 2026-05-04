@@ -91,6 +91,14 @@ pip install "semanticcache-py[embed-local-gpu]" \
   --extra-index-url https://download.pytorch.org/whl/cu124
 ```
 
+### OpenAI embeddings
+
+Install the OpenAI extra so `embedder_type="openai"` works (pulls `openai` and `tiktoken`). Set `OPENAI_API_KEY` in your environment.
+
+```bash
+pip install "semanticcache-py[embed-openai]"
+```
+
 ## Requirements
 
 Python 3.12+.
