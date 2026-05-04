@@ -43,6 +43,11 @@ embed-local-cpu = ["sentence-transformers>=3.0", "torch>=2.1.0"]
 embed-local-gpu = ["sentence-transformers>=3.0", "torch>=2.1.0"]
 embed-local = ["sentence-transformers>=3.0", "torch>=2.1.0"]
 embed-openai = ["openai>=1.40", "tiktoken>=0.7"]
+test = [
+    "numpy>=1.24",
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+]
 
 [project.urls]
 Homepage = "https://github.com/axm1647/SemanticCache-py"
@@ -52,6 +57,13 @@ Issues = "https://github.com/axm1647/SemanticCache-py/issues"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["semanticcache*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+markers = [
+    "integration: requires sentence-transformers, downloads or uses cached models",
+]
 
 [tool.basedpyright]
 include = ["semanticcache"]
