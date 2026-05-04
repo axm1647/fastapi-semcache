@@ -3,7 +3,7 @@
 from functools import lru_cache
 from typing import ClassVar, Literal
 
-from pydantic import Field
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -36,6 +36,22 @@ class CacheSettings(BaseSettings):
     pg_pool_max_overflow: int = 20
 
     embedder_type: Literal["local", "openai"] = "local"
+    hugging_face_api_key: str | None = Field(
+        default=None,
+        description="Hugging Face API key",
+        validation_alias=AliasChoices(
+            "HUGGINGFACE_API_KEY",
+            "SEMANTIC_CACHE_HUGGING_FACE_API_KEY",
+        ),
+    )
+    openai_api_key: str | None = Field(
+        default=None,
+        description="OpenAI API key",
+        validation_alias=AliasChoices(
+            "OPENAI_API_KEY",
+            "SEMANTIC_CACHE_OPENAI_API_KEY",
+        ),
+    )
 
 
 @lru_cache(maxsize=1)
