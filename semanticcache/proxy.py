@@ -137,7 +137,9 @@ def create_semantic_cache_proxy_app(
             (for example ``transport`` for tests or custom TLS settings).
         **middleware_kwargs: Forwarded to ``SemanticCacheMiddleware`` (``enabled``,
             ``path_prefix``, ``methods``, ``extract_query``, ``extract_model``,
-            ``model_header_name``).
+            ``model_header_name``, ``cache_settings``). Optional 429 circuit breaker
+            fields live on ``CacheSettings`` (``SEMANTIC_CACHE_*`` env vars); see
+            ``config.CacheSettings``.
 
     Returns:
         FastAPI application ready for ``uvicorn`` or another ASGI server.

@@ -79,6 +79,27 @@ class CacheSettings(BaseSettings):
         ),
     )
 
+    circuit_breaker_429_enabled: bool = Field(
+        False,
+        description=(
+            "When True, after enough consecutive upstream HTTP 429 responses the "
+            "middleware stops forwarding and only serves cache hits until cooldown."
+        ),
+    )
+    circuit_breaker_429_consecutive_limit: int = Field(
+        5,
+        ge=1,
+        description="Number of consecutive 429 responses required to open the circuit.",
+    )
+    circuit_breaker_429_open_seconds: float = Field(
+        60.0,
+        gt=0,
+        description=(
+            "Seconds to keep the circuit open (cache-only); after this, upstream "
+            "requests resume."
+        ),
+    )
+
 
 def get_cache_settings() -> CacheSettings:
     return CacheSettings()

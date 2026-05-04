@@ -10,8 +10,9 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 from collections.abc import Awaitable, Callable, MutableMapping, Sequence
-from typing import cast, override
+from typing import TYPE_CHECKING, cast, override
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -20,6 +21,9 @@ from starlette.types import ASGIApp
 
 from ..cache import SemanticCache
 from ..types import CacheResult
+
+if TYPE_CHECKING:
+    from ..config import CacheSettings
 
 _logger = logging.getLogger(__name__)
 
@@ -132,6 +136,7 @@ class SemanticCacheMiddleware(BaseHTTPMiddleware):
     _HEADER_CACHE_ERROR: str = "X-Cache-Error"
     _HEADER_SIMILARITY: str = "X-Cache-Similarity"
     _HEADER_SOURCE: str = "X-Cache-Source"
+    _HEADER_CIRCUIT: str = "X-Cache-Circuit"
 
     _cache: SemanticCache
     _enabled: bool
@@ -142,6 +147,12 @@ class SemanticCacheMiddleware(BaseHTTPMiddleware):
     _model_header_name: str
     _flight_lock_registry: asyncio.Lock
     _flight_locks: dict[tuple[str, str | None], asyncio.Lock]
+    _circuit_breaker_enabled: bool
+    _circuit_breaker_limit: int
+    _circuit_breaker_open_seconds: float
+    _circuit_lock: asyncio.Lock
+    _consecutive_429_count: int
+    _circuit_open_until: float | None
 
     def __init__(
         self,
@@ -156,6 +167,7 @@ class SemanticCacheMiddleware(BaseHTTPMiddleware):
         ] = default_extract_query,
         extract_model: Callable[[Request, bytes], Awaitable[str | None]] | None = None,
         model_header_name: str = "X-Semantic-Cache-Model",
+        cache_settings: CacheSettings | None = None,
     ) -> None:
         """Attach semantic caching to a Starlette / FastAPI application.
 
@@ -170,7 +182,11 @@ class SemanticCacheMiddleware(BaseHTTPMiddleware):
             extract_model: Optional async function for embedder routing; defaults
                 to reading ``model_header_name`` and JSON ``model``.
             model_header_name: Header checked by the default model extractor.
+            cache_settings: Optional settings override; defaults to
+                ``get_cache_settings()`` (429 circuit breaker fields included).
         """
+        from ..config import get_cache_settings
+
         super().__init__(app)
         self._cache = cache
         self._enabled = enabled
@@ -181,6 +197,15 @@ class SemanticCacheMiddleware(BaseHTTPMiddleware):
         self._model_header_name = model_header_name
         self._flight_lock_registry = asyncio.Lock()
         self._flight_locks = {}
+        resolved = (
+            cache_settings if cache_settings is not None else get_cache_settings()
+        )
+        self._circuit_breaker_enabled = resolved.circuit_breaker_429_enabled
+        self._circuit_breaker_limit = resolved.circuit_breaker_429_consecutive_limit
+        self._circuit_breaker_open_seconds = resolved.circuit_breaker_429_open_seconds
+        self._circuit_lock = asyncio.Lock()
+        self._consecutive_429_count = 0
+        self._circuit_open_until = None
 
     async def _get_flight_lock(self, query: str, model: str | None) -> asyncio.Lock:
         """Return the async lock that serializes miss handling for one cache key.
@@ -199,6 +224,46 @@ class SemanticCacheMiddleware(BaseHTTPMiddleware):
                 lock = asyncio.Lock()
                 self._flight_locks[key] = lock
             return lock
+
+    async def _upstream_blocked_by_circuit(self) -> bool:
+        """Return True when the 429 circuit is open and upstream must not be called.
+
+        Expired open windows are cleared while holding the circuit lock.
+
+        Returns:
+            True if ``call_next`` must be skipped and only cache hits apply.
+        """
+        if not self._circuit_breaker_enabled:
+            return False
+        async with self._circuit_lock:
+            if self._circuit_open_until is None:
+                return False
+            now = time.monotonic()
+            if now >= self._circuit_open_until:
+                self._circuit_open_until = None
+                return False
+            return True
+
+    async def _record_upstream_status_for_circuit(self, status_code: int) -> None:
+        """Count consecutive HTTP 429 responses and open the circuit when tripped."""
+        if not self._circuit_breaker_enabled:
+            return
+        async with self._circuit_lock:
+            if status_code == 429:
+                self._consecutive_429_count += 1
+                if self._consecutive_429_count >= self._circuit_breaker_limit:
+                    self._circuit_open_until = (
+                        time.monotonic() + self._circuit_breaker_open_seconds
+                    )
+                    self._consecutive_429_count = 0
+                    _logger.warning(
+                        "Semantic cache 429 circuit breaker opened for %.2f seconds "
+                        "after %i consecutive 429 response(s) from upstream",
+                        self._circuit_breaker_open_seconds,
+                        self._circuit_breaker_limit,
+                    )
+            else:
+                self._consecutive_429_count = 0
 
     async def _default_extract_model(self, request: Request, body: bytes) -> str | None:
         """Read model from header or JSON body.
@@ -359,6 +424,11 @@ class SemanticCacheMiddleware(BaseHTTPMiddleware):
             For the same ``(query, model)``, concurrent misses are serialized: waiters
             re-check the cache after the leader finishes and usually avoid duplicate
             upstream work.
+
+            When ``circuit_breaker_429_enabled`` is set on ``CacheSettings`` (or via
+            ``cache_settings``), enough consecutive upstream HTTP 429 responses open
+            a cooldown window where ``call_next`` is skipped and only cache hits are
+            returned; cache misses receive ``503`` with ``X-Cache-Circuit: OPEN``.
         """
         if not self._enabled:
             return await call_next(request)
@@ -404,7 +474,26 @@ class SemanticCacheMiddleware(BaseHTTPMiddleware):
                     headers=self._hit_headers(result),
                 )
 
+            if await self._upstream_blocked_by_circuit():
+                miss = self._miss_headers(cache_read_error=cache_read_error)
+                circuit_hdrs = {
+                    **miss,
+                    self._HEADER_CIRCUIT: "OPEN",
+                }
+                return JSONResponse(
+                    status_code=503,
+                    content={
+                        "detail": (
+                            "Upstream is temporarily not contacted after repeated "
+                            "HTTP 429 responses; only cache hits are served until the "
+                            "cooldown elapses."
+                        )
+                    },
+                    headers=circuit_hdrs,
+                )
+
             response = await call_next(request)
+            await self._record_upstream_status_for_circuit(response.status_code)
             miss = self._miss_headers(cache_read_error=cache_read_error)
 
             if not (200 <= response.status_code < 300):
