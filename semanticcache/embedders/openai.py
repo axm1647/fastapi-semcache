@@ -1,5 +1,6 @@
 from typing import override
 
+from ..exceptions import InvalidEmbeddingDimensionException
 from ._base import BaseEmbedder
 
 
@@ -34,24 +35,21 @@ class OpenAIEmbedder(BaseEmbedder):
         self,
         model_name: str = "text-embedding-3-small",
         *,
-        dimensions: int = 384,
-        normalize_embeddings: bool = True,
+        dimensions: int = 1536,
     ) -> None:
         """Declare OpenAI embedding settings for dimension and table namespacing.
 
         Args:
             model_name: Embedding model id passed to the OpenAI API.
-            dimensions: Requested embedding width (must match the pgvector column).
-            normalize_embeddings: When True, L2-normalize vectors after the API
-                returns (for cosine distance with pgvector).
+            dimensions: Requested embedding width (defaults to 1536 for text-embedding-3-small).
+                This is passed to the OpenAI API and used for table namespacing + column.
         """
         _ = _require_openai()
         if dimensions < 1:
             msg = "dimensions must be positive"
-            raise ValueError(msg)
+            raise InvalidEmbeddingDimensionException(msg)
         self._model_name = model_name
         self._dimensions = dimensions
-        self._normalize_embeddings = normalize_embeddings
 
     @property
     @override
