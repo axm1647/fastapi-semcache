@@ -207,9 +207,15 @@ def create_semantic_cache_proxy_app(
                 headers=req_headers,
             )
         except httpx.RequestError as exc:
-            _logger.warning("Upstream request failed: %s", exc)
+            _logger.warning(
+                "Upstream request failed (%s %s): %s",
+                request.method,
+                path_component,
+                exc,
+                exc_info=True,
+            )
             return Response(
-                content=f"Upstream error: {exc}".encode(),
+                content=b"Bad Gateway",
                 status_code=502,
                 media_type="text/plain; charset=utf-8",
             )
