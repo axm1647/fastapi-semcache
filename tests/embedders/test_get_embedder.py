@@ -1,0 +1,31 @@
+"""Tests for ``get_embedder`` and ``CacheSettings`` embedder validation."""
+
+from __future__ import annotations
+
+import pytest
+from pydantic import ValidationError
+
+from semanticcache.config import CacheSettings
+from semanticcache.embedders import get_embedder
+from semanticcache.exceptions import NotSupportedEmbedderException
+
+
+@pytest.mark.parametrize(
+    "embedder_type",
+    ("cohere", "voyage", "ollama"),
+)
+def test_unsupported_types_raise(embedder_type: str) -> None:
+    """Types not yet implemented must raise a clear error."""
+    settings = CacheSettings.model_validate({"embedder_type": embedder_type})
+    with pytest.raises(NotSupportedEmbedderException):
+        get_embedder(settings)
+
+
+@pytest.mark.parametrize(
+    "embedder_type",
+    ("not-a-real-type", "not-a-real-type-2"),
+)
+def test_invalid_embedder_type_raises_validation_error(embedder_type: str) -> None:
+    """Reject embedder types outside the allowed literal union at settings parse time."""
+    with pytest.raises(ValidationError):
+        CacheSettings.model_validate({"embedder_type": embedder_type})
