@@ -26,9 +26,16 @@ It includes **FastAPI** middleware as a first-class integration path and can als
 - **FastAPI middleware** for in-app semantic caching.
 - **Reverse proxy mode** via `create_semantic_cache_proxy_app()`.
 
+## Streaming and chunked responses
+
+Today the middleware **buffers the full downstream response** before sending it to the client. That applies even when your route returns a streaming-style response (for example token streaming); the bytes are collected first, then returned as one response. Cached hits are served as ordinary JSON bodies. The reverse proxy uses httpx’s full response body, not a streamed upstream read.
+
+**Chunked pass-through and streaming-friendly caching are planned** so SSE and similar flows can deliver early bytes while still integrating with semantic caching where feasible.
+
 ## Future support
 
-- **Django** and **Flask** middleware for in-app semantic caching (not yet shipped. same role as the FastAPI middleware).
+- **Chunked / streaming responses** for the middleware (and related proxy behavior): pass-through streaming instead of full buffering; see [Streaming and chunked responses](#streaming-and-chunked-responses).
+- **Django** and **Flask** middleware for in-app semantic caching (not yet shipped; same role as the FastAPI middleware).
 
 Embeddings from the following providers are planned:
 
