@@ -72,6 +72,8 @@ See `create_semantic_cache_proxy_app` in `semanticcache.proxy` for timeout, TLS 
 pip install semanticcache-py
 ```
 
+**Custom embedders:** subclass `BaseEmbedder` from `semanticcache.embedders` and pass it to `SemanticCache(embedder=...)` to skip the optional embedding extras. See [docs/embedders.md](docs/embedders.md).
+
 Optional extras:
 
 - `embed-huggingface` / `embed-huggingface-cpu`: Sentence Transformers with **CPU** PyTorch.
