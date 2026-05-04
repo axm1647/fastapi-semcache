@@ -12,10 +12,13 @@ license = "Apache-2.0"
 keywords = [
     "cache",
     "embedding",
+    "embeddings",
+    "fastapi",
     "llm",
     "pgvector",
     "redis",
     "semantic-cache",
+    "semantic cache",
     "vector",
 ]
 classifiers = [
