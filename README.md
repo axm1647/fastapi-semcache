@@ -32,8 +32,9 @@ It includes **FastAPI** middleware as a first-class integration path and can als
 
 Embeddings from the following providers are planned:
 
-- Cohere
-- Voyage
+- **Ollama** (HTTP embedding API against a configurable base URL, so the server can run locally or on another host).
+- **Cohere**
+- **Voyage**
 
 ## Quick start
 
