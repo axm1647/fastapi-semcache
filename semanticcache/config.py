@@ -35,7 +35,9 @@ class CacheSettings(BaseSettings):
     pg_pool_size: int = 10
     pg_pool_max_overflow: int = 20
 
-    embedder_type: Literal["local", "openai", "cohere", "voyage"] = "local"
+    embedder_type: Literal["huggingface", "openai", "cohere", "voyage", "ollama"] = (
+        "huggingface"
+    )
     hugging_face_api_key: str | None = Field(
         default=None,
         description="Hugging Face API key",
@@ -66,6 +68,14 @@ class CacheSettings(BaseSettings):
         validation_alias=AliasChoices(
             "VOYAGE_API_KEY",
             "SEMANTIC_CACHE_VOYAGE_API_KEY",
+        ),
+    )
+    ollama_api_key: str | None = Field(
+        default=None,
+        description="Ollama API key",
+        validation_alias=AliasChoices(
+            "OLLAMA_API_KEY",
+            "SEMANTIC_CACHE_OLLAMA_API_KEY",
         ),
     )
 

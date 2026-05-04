@@ -22,7 +22,7 @@ def get_embedder(settings: CacheSettings | None = None) -> BaseEmbedder:
         NotSupportedEmbedderException: If ``embedder_type`` is not supported.
     """
     resolved = settings if settings is not None else get_cache_settings()
-    if resolved.embedder_type == "local":
+    if resolved.embedder_type == "huggingface":
         return SBERTEmbedder()
     if resolved.embedder_type == "openai":
         return OpenAIEmbedder()
@@ -30,10 +30,17 @@ def get_embedder(settings: CacheSettings | None = None) -> BaseEmbedder:
         raise NotImplementedError("Cohere embeddings are not supported yet.")
     if resolved.embedder_type == "voyage":
         raise NotImplementedError("Voyage embeddings are not supported yet.")
+    if resolved.embedder_type == "ollama":
+        raise NotImplementedError("Ollama embeddings are not supported yet.")
     raise NotSupportedEmbedderException(
         "This embeddings option is not supported. "
         "Please check README for available embedding options."
     )
 
 
-__all__: list[str] = ["BaseEmbedder", "SBERTEmbedder", "get_embedder", "OpenAIEmbedder"]
+__all__: list[str] = [
+    "BaseEmbedder",
+    "SBERTEmbedder",
+    "get_embedder",
+    "OpenAIEmbedder",
+]

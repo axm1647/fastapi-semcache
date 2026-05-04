@@ -39,7 +39,9 @@ def test_require_positive_dim_rejects_non_positive(dim: int) -> None:
         _require_positive_dim(dim)
 
 
-def test_require_sentence_transformers_import_error(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_require_sentence_transformers_import_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Surface an install hint when sentence-transformers is missing."""
     import builtins
 
@@ -51,7 +53,7 @@ def test_require_sentence_transformers_import_error(monkeypatch: pytest.MonkeyPa
         return real_import(name, *args, **kwargs)
 
     monkeypatch.setattr(builtins, "__import__", import_hook)
-    with pytest.raises(ImportError, match=r"semanticcache-py\[embed-local"):
+    with pytest.raises(ImportError, match=r"semanticcache-py\[embed-huggingface"):
         _require_sentence_transformers()
 
 
@@ -174,7 +176,9 @@ def test_init_passes_huggingface_token(monkeypatch: pytest.MonkeyPatch) -> None:
     class _TrackingFake(_FakeSentenceTransformer):
         """Record ``token`` from the SentenceTransformer-style constructor."""
 
-        def __init__(self, model_name: str, *, token: str | None = None, **kwargs: Any) -> None:
+        def __init__(
+            self, model_name: str, *, token: str | None = None, **kwargs: Any
+        ) -> None:
             holder["token"] = token
             super().__init__(model_name, token=token, **kwargs)
 
@@ -186,7 +190,9 @@ def test_init_passes_huggingface_token(monkeypatch: pytest.MonkeyPatch) -> None:
     assert holder["token"] == "hf-test-key"
 
 
-def test_cache_namespace_includes_model_and_dim(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_cache_namespace_includes_model_and_dim(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Namespace is stable and encodes backend, model id, and width."""
     _patch_require_st(monkeypatch, _FakeSentenceTransformer)
     name = "org/custom-model"
@@ -200,7 +206,9 @@ def test_embedding_dim_none_raises(monkeypatch: pytest.MonkeyPatch) -> None:
     class _NoDim(_FakeSentenceTransformer):
         """Act like a model that does not report output width."""
 
-        def __init__(self, model_name: str, *, token: str | None = None, **kwargs: Any) -> None:
+        def __init__(
+            self, model_name: str, *, token: str | None = None, **kwargs: Any
+        ) -> None:
             super().__init__(model_name, token=token, embedding_dim=None, **kwargs)
 
     _patch_require_st(monkeypatch, _NoDim)
@@ -215,7 +223,9 @@ def test_embedding_dim_non_positive_raises(monkeypatch: pytest.MonkeyPatch) -> N
     class _BadDim(_FakeSentenceTransformer):
         """Act like a model that reports an invalid vector width."""
 
-        def __init__(self, model_name: str, *, token: str | None = None, **kwargs: Any) -> None:
+        def __init__(
+            self, model_name: str, *, token: str | None = None, **kwargs: Any
+        ) -> None:
             super().__init__(model_name, token=token, embedding_dim=0, **kwargs)
 
     _patch_require_st(monkeypatch, _BadDim)

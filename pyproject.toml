@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "semanticcache-py"
-version = "0.2.4"
+version = "0.2.5"
 description = "Drop in FastAPI middleware/reverse proxy with semantic caching for APIs & LLMs"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -36,12 +36,12 @@ dependencies = [
     "redis>=7.4.0",
 ]
 
-# embed-local-cpu and embed-local-gpu list the same packages. Pip pulls CPU PyTorch
+# embed-huggingface-cpu and embed-huggingface-gpu list the same packages. Pip pulls CPU PyTorch
 # wheels from PyPI by default. For CUDA builds, pass PyTorch's wheel index (README).
 [project.optional-dependencies]
-embed-local-cpu = ["sentence-transformers>=3.0", "torch>=2.1.0"]
-embed-local-gpu = ["sentence-transformers>=3.0", "torch>=2.1.0"]
-embed-local = ["sentence-transformers>=3.0", "torch>=2.1.0"]
+embed-huggingface-cpu = ["sentence-transformers>=3.0", "torch>=2.1.0"]
+embed-huggingface-gpu = ["sentence-transformers>=3.0", "torch>=2.1.0"]
+embed-huggingface = ["sentence-transformers>=3.0", "torch>=2.1.0"]
 embed-openai = ["openai>=1.40", "tiktoken>=0.7"]
 test = [
     "numpy>=1.24",

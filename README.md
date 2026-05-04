@@ -1,6 +1,6 @@
 # semanticcache
 
-Semantic caching middleware and reverse proxy for APIs and LLMs, with local embeddings, pgvector similarity search, and Redis-backed response caching.
+Semantic caching middleware and reverse proxy for APIs and LLMs, with embeddings, pgvector similarity search, and Redis-backed response caching.
 
 The PyPI distribution name is **`semanticcache-py`** (the import package remains `semanticcache`).
 
@@ -12,7 +12,7 @@ It includes **FastAPI** middleware as a first-class integration path and can als
 
 ## What is implemented
 
-- **Local embeddings** via Sentence Transformers (`embedder_type="local"`).
+- **Huggingface embeddings** via Sentence Transformers (`embedder_type="huggingface"`).
 - **OpenAI embeddings** via the official async client (`embedder_type="openai"`; install
   `embed-openai` and set `OPENAI_API_KEY`). Use
   `OpenAIEmbedder(..., send_dimensions_to_api=False)` when the model has a fixed
@@ -74,15 +74,15 @@ pip install semanticcache-py
 
 Optional extras:
 
-- `embed-local` / `embed-local-cpu`: Sentence Transformers with **CPU** PyTorch.
-- `embed-local-gpu`: Sentence Transformers with a CUDA-enabled PyTorch install.
+- `embed-huggingface` / `embed-huggingface-cpu`: Sentence Transformers with **CPU** PyTorch.
+- `embed-huggingface-gpu`: Sentence Transformers with a CUDA-enabled PyTorch install.
 - `embed-openai`: OpenAI embeddings (`openai`, `tiktoken`).
 
 ### CPU
 
 ```bash
-pip install "semanticcache-py[embed-local-cpu]"
-# or: pip install "semanticcache-py[embed-local]"
+pip install "semanticcache-py[embed-huggingface-cpu]"
+# or: pip install "semanticcache-py[embed-huggingface]"
 ```
 
 ### GPU
@@ -90,7 +90,7 @@ pip install "semanticcache-py[embed-local-cpu]"
 Pick a CUDA version that matches your system from [PyTorch Get Started](https://pytorch.org/get-started/locally/), then install with that index so pip selects CUDA wheels.
 
 ```bash
-pip install "semanticcache-py[embed-local-gpu]" \
+pip install "semanticcache-py[embed-huggingface-gpu]" \
   --extra-index-url https://download.pytorch.org/whl/cu124
 ```
 

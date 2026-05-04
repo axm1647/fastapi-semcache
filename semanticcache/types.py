@@ -11,7 +11,14 @@ class CacheQuery(BaseModel):
 class CacheResult(BaseModel):
     is_hit: bool
     similarity: float | None = None
-    source: Literal["embedders.sbert", "embedders.openai", "none"] = "none"
+    source: Literal[
+        "embedders.sbert",
+        "embedders.openai",
+        "embedders.cohere",
+        "embedders.voyage",
+        "embedders.ollama",
+        "none",
+    ] = "none"
     response: dict[str, object] | None = None
 
 

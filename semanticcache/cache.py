@@ -16,12 +16,25 @@ if TYPE_CHECKING:
 
 def _embed_source(
     settings: "CacheSettings",
-) -> Literal["embedders.sbert", "embedders.openai", "none"]:
+) -> Literal[
+    "embedders.sbert",
+    "embedders.openai",
+    "embedders.cohere",
+    "embedders.voyage",
+    "embedders.ollama",
+    "none",
+]:
     """Map configured embedder type to ``CacheResult.source``."""
-    if settings.embedder_type == "local":
+    if settings.embedder_type == "huggingface":
         return "embedders.sbert"
     if settings.embedder_type == "openai":
         return "embedders.openai"
+    if settings.embedder_type == "cohere":
+        return "embedders.cohere"
+    if settings.embedder_type == "voyage":
+        return "embedders.voyage"
+    if settings.embedder_type == "ollama":
+        return "embedders.ollama"
     return "none"
 
 
