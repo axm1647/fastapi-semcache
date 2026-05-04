@@ -10,6 +10,64 @@ This package is designed for direct integration into modern Python API stacks wi
 
 It includes **FastAPI** middleware as a first-class integration path and can also run as a reverse proxy in front of an upstream API or LLM service. **Django** and **Flask** middleware are planned for a future release so you can hook semantic caching into those stacks the same way as FastAPI.
 
+## FastAPI middleware
+
+Add `SemanticCacheMiddleware` to your app and reuse one `SemanticCache` instance for all requests. Configure Postgres, Redis, and the embedder with **`SEMANTIC_CACHE_*`** environment variables (see `.env.example`). By default only **`POST`** requests are intercepted; the middleware derives cache-key text from JSON bodies using `query`, `prompt`, `input`, or chat-style `messages` (see `default_extract_query` in `semanticcache.middleware`). Successful responses whose body parses as a **JSON object** are candidates for storage.
+
+```python
+from typing import Any
+
+from fastapi import FastAPI
+
+from semanticcache import SemanticCache, SemanticCacheMiddleware
+
+app = FastAPI()
+cache = SemanticCache()
+app.add_middleware(SemanticCacheMiddleware, cache=cache)
+
+
+@app.post("/v1/chat/completions")
+async def chat_completions(body: dict[str, Any]) -> dict[str, Any]:
+    # Clients should send JSON with prompt, query, input, or chat messages so the
+    # middleware can build the cache key (see default_extract_query). Misses run your
+    # handler; hits short-circuit with a cached JSON body.
+    return {"choices": [{"message": {"role": "assistant", "content": "Hello"}}]}
+```
+
+Run with `uvicorn mymodule:app --host 0.0.0.0 --port 8000`.
+
+### Custom cache key text (`extract_query`)
+
+If your JSON body does not follow the usual `query` / `prompt` / `messages` patterns, pass an **async** callable as **`extract_query`**. It receives the Starlette **`Request`** and the **raw body bytes** (already buffered by the middleware). Return a **non-empty string** to embed and look up; return **`None`** to skip semantic caching for that request (the route still runs).
+
+You can wrap **`default_extract_query`** and add fallbacks for your own fields, or replace it entirely.
+
+```python
+from fastapi import FastAPI, Request
+
+from semanticcache import SemanticCache
+from semanticcache.middleware import SemanticCacheMiddleware, default_extract_query
+
+async def extract_query(request: Request, body: bytes) -> str | None:
+    base = await default_extract_query(request, body)
+    if base is not None:
+        return base
+    # Parse ``body`` for your schema; return None to bypass the cache.
+    return None
+
+app = FastAPI()
+cache = SemanticCache()
+app.add_middleware(
+    SemanticCacheMiddleware,
+    cache=cache,
+    extract_query=extract_query,
+)
+```
+
+Use **`extract_model`** when the cache key should also vary by model id from headers or JSON (same async `(request, body) -> str | None` idea). For **`create_semantic_cache_proxy_app`**, pass **`extract_query=...`** (and other middleware options) as keyword arguments; they are forwarded to `SemanticCacheMiddleware`.
+
+Other advanced options (`path_prefix`, HTTP 429 circuit breaker via `cache_settings`, `enabled=False`) are documented on **`SemanticCacheMiddleware`** in `semanticcache.middleware.fastapi`. On shutdown, call `await cache.close()` from a lifespan handler if you want pools closed cleanly.
+
 ## What is implemented
 
 - **Huggingface embeddings** via Sentence Transformers (`embedder_type="huggingface"`).
@@ -43,7 +101,11 @@ Embeddings from the following providers are planned:
 - **Cohere**
 - **Voyage**
 
-## Quick start
+## Reverse proxy
+
+The reverse proxy mode is optional: it forwards traffic to an upstream base URL while using the same semantic cache middleware. Use it when you want a standalone hop in front of another service rather than importing routes into your FastAPI app.
+
+Minimal programmatic setup:
 
 ```python
 from semanticcache import SemanticCache, create_semantic_cache_proxy_app
@@ -55,15 +117,7 @@ app = create_semantic_cache_proxy_app(
 )
 ```
 
-Run with:
-
-```bash
-uvicorn mymodule:app --host 0.0.0.0 --port 8080
-```
-
-## Reverse proxy
-
-Point clients at the proxy and configure Postgres, Redis, and the upstream base URL.
+Run with `uvicorn mymodule:app --host 0.0.0.0 --port 8080`.
 
 This repository includes a small ASGI app at `app/main.py` (import `app` for uvicorn). Set **`SEMANTIC_CACHE_PROXY_UPSTREAM`** to the backend base URL; the default is `http://127.0.0.1:11434`.
 
