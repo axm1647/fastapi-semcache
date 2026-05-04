@@ -23,6 +23,40 @@ from ..types import CacheResult
 
 _logger = logging.getLogger(__name__)
 
+_CACHE_KEY_LOG_MAX = 48
+
+
+def _cache_key_snippet(query: str, max_chars: int = _CACHE_KEY_LOG_MAX) -> str:
+    """Return a short, non-secret prefix of the cache key for logs.
+
+    Args:
+        query: Full cache lookup text.
+        max_chars: Maximum characters before truncation.
+
+    Returns:
+        Truncated text with an ellipsis when shortened.
+    """
+    text = query.replace("\n", " ").strip()
+    if len(text) <= max_chars:
+        return text
+    return f"{text[:max_chars]}..."
+
+
+def _request_id_for_log(request: Request) -> str | None:
+    """Best-effort request or trace id from common headers.
+
+    Args:
+        request: Current ASGI request.
+
+    Returns:
+        First non-empty id header value, capped for log safety, or None.
+    """
+    for name in ("X-Request-ID", "X-Correlation-ID", "X-Trace-ID"):
+        raw = request.headers.get(name)
+        if isinstance(raw, str) and raw.strip():
+            return raw.strip()[:128]
+    return None
+
 
 def _extract_query_from_mapping(data: dict[str, object]) -> str | None:
     """Pick a cache key string from common LLM / search JSON shapes.
@@ -95,6 +129,7 @@ class SemanticCacheMiddleware(BaseHTTPMiddleware):
     """
 
     _HEADER_CACHE: str = "X-Cache"
+    _HEADER_CACHE_ERROR: str = "X-Cache-Error"
     _HEADER_SIMILARITY: str = "X-Cache-Similarity"
     _HEADER_SOURCE: str = "X-Cache-Source"
 
@@ -207,9 +242,81 @@ class SemanticCacheMiddleware(BaseHTTPMiddleware):
             hdrs[self._HEADER_SIMILARITY] = f"{result.similarity:.6f}"
         return hdrs
 
-    def _miss_headers(self) -> dict[str, str]:
-        """Return headers attached to uncached or pass-through responses."""
-        return {self._HEADER_CACHE: "MISS"}
+    def _miss_headers(self, *, cache_read_error: bool = False) -> dict[str, str]:
+        """Return headers attached to uncached or pass-through responses.
+
+        Args:
+            cache_read_error: When True, add ``X-Cache-Error: 1`` (read path failed).
+
+        Returns:
+            Header map with ``X-Cache: MISS`` and optional error marker.
+        """
+        hdrs: dict[str, str] = {self._HEADER_CACHE: "MISS"}
+        if cache_read_error:
+            hdrs[self._HEADER_CACHE_ERROR] = "1"
+        return hdrs
+
+    def _log_cache_get_failure(
+        self,
+        request: Request,
+        *,
+        query: str,
+        model: str | None,
+        phase: str,
+        exc: Exception,
+    ) -> None:
+        """Emit a single structured warning when ``cache.get`` fails.
+
+        Args:
+            request: Current request (path and optional request id only).
+            query: Cache key text; only a snippet is logged.
+            model: Optional model key; truncated in logs.
+            phase: ``preflight`` or ``double_check`` for disambiguation.
+            exc: The exception raised by the cache layer.
+        """
+        rid = _request_id_for_log(request)
+        snippet = _cache_key_snippet(query)
+        model_s = (model or "").strip()[:64] or "-"
+        _logger.warning(
+            "Semantic cache read failed (%s): route=%s request_id=%s "
+            "cache_key_snippet=%r model=%s error=%s: %s",
+            phase,
+            request.url.path,
+            rid if rid is not None else "-",
+            snippet,
+            model_s,
+            type(exc).__name__,
+            exc,
+            exc_info=True,
+        )
+
+    async def _cache_get_fail_open(
+        self,
+        request: Request,
+        query: str,
+        model: str | None,
+        *,
+        phase: str,
+    ) -> tuple[CacheResult, bool]:
+        """Run ``cache.get`` and map failures to a miss without raising.
+
+        Args:
+            request: Current request (for logging context).
+            query: Cache lookup text.
+            model: Optional embedder routing key.
+            phase: Log label for this read (preflight vs double_check).
+
+        Returns:
+            ``(result, cache_read_error)`` where ``cache_read_error`` is True if
+            ``get`` raised and the result is a synthetic miss.
+        """
+        try:
+            return (await self._cache.get(query, model=model), False)
+        except Exception as exc:
+            self._log_cache_get_failure(
+                request, query=query, model=model, phase=phase, exc=exc
+            )
+            return (CacheResult(is_hit=False), True)
 
     def _merge_response_headers(
         self,
@@ -241,6 +348,11 @@ class SemanticCacheMiddleware(BaseHTTPMiddleware):
             Response from cache, or from the downstream app (possibly with MISS headers).
 
         Note:
+            If ``cache.get`` raises, the failure is logged and the request continues as
+            a miss (downstream handler runs). Responses then include ``X-Cache: MISS``
+            and ``X-Cache-Error: 1`` when any read in the preflight or double-check
+            step failed.
+
             If storing a cache entry fails after the route returned a successful JSON
             body, the error is logged and that body is still returned to the client.
 
@@ -271,7 +383,9 @@ class SemanticCacheMiddleware(BaseHTTPMiddleware):
         extract_model = self._extract_model or self._default_extract_model
         model = await extract_model(request, body)
 
-        result = await self._cache.get(query, model=model)
+        result, cache_read_error = await self._cache_get_fail_open(
+            request, query, model, phase="preflight"
+        )
         if result.is_hit and result.response is not None:
             return JSONResponse(
                 content=result.response,
@@ -280,7 +394,10 @@ class SemanticCacheMiddleware(BaseHTTPMiddleware):
 
         flight = await self._get_flight_lock(query, model)
         async with flight:
-            result = await self._cache.get(query, model=model)
+            result, inner_err = await self._cache_get_fail_open(
+                request, query, model, phase="double_check"
+            )
+            cache_read_error = cache_read_error or inner_err
             if result.is_hit and result.response is not None:
                 return JSONResponse(
                     content=result.response,
@@ -288,7 +405,7 @@ class SemanticCacheMiddleware(BaseHTTPMiddleware):
                 )
 
             response = await call_next(request)
-            miss = self._miss_headers()
+            miss = self._miss_headers(cache_read_error=cache_read_error)
 
             if not (200 <= response.status_code < 300):
                 self._merge_response_headers(response, miss)
