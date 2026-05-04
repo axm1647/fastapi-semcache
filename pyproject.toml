@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "semanticcache-py"
 version = "0.2.3"
-description = "Framework-agnostic semantic caching for APIs & LLMs"
+description = "Drop in FastAPI middleware/reverse proxy with semantic caching for APIs & LLMs"
 readme = "README.md"
 requires-python = ">=3.12"
 license = "Apache-2.0"
