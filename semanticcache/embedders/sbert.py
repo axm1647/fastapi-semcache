@@ -9,6 +9,10 @@ from __future__ import annotations
 import asyncio
 from typing import cast, final, override
 
+from ..exceptions import (
+    EmbeddingDimensionUnavailableException,
+    InvalidEmbeddingDimensionException,
+)
 from ._base import BaseEmbedder
 
 
@@ -26,7 +30,7 @@ def _require_positive_dim(dim: int) -> int:
     """
     if dim < 1:
         msg = "embedding_dim must be positive"
-        raise ValueError(msg)
+        raise InvalidEmbeddingDimensionException(msg)
     return dim
 
 
@@ -89,12 +93,16 @@ class SBERTEmbedder(BaseEmbedder):
 
         Returns:
             Embedding width from the loaded SentenceTransformer.
+
+        Raises:
+            EmbeddingDimensionUnavailableException: If the model did not report a
+                dimension.
         """
-        dim_fn = getattr(self._model, "get_embedding_dimension", None)
-        if dim_fn is None:
-            dim_fn = self._model.get_sentence_embedding_dimension
-        dim = int(dim_fn())
-        return _require_positive_dim(dim)
+        dim = self._model.get_embedding_dimension()
+        if dim is None:
+            msg = "SentenceTransformer did not report an embedding dimension"
+            raise EmbeddingDimensionUnavailableException(msg)
+        return _require_positive_dim(int(dim))
 
     @property
     @override
