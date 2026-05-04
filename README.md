@@ -13,6 +13,10 @@ It includes **FastAPI** middleware as a first-class integration path and can als
 ## What is implemented
 
 - **Local embeddings** via Sentence Transformers (`embedder_type="local"`).
+- **OpenAI embeddings** via the official async client (`embedder_type="openai"`; install
+  `embed-openai` and set `OPENAI_API_KEY`). Use
+  `OpenAIEmbedder(..., send_dimensions_to_api=False)` when the model has a fixed
+  output size and the API must not get a `dimensions` field.
 - **PostgreSQL + pgvector** for semantic similarity lookup. The library creates a
   dedicated cache table per embedder configuration (derived from model id and vector
   dimension) on first use, so you are not tied to a single hard-coded vector width.
@@ -22,16 +26,12 @@ It includes **FastAPI** middleware as a first-class integration path and can als
 - **FastAPI middleware** for in-app semantic caching.
 - **Reverse proxy mode** via `create_semantic_cache_proxy_app()`.
 
-## Current limitations
+## Future support
 
-- **OpenAI embeddings are not implemented yet.**
-- `embed-openai` only installs optional dependencies (`openai`, `tiktoken`) for future support or custom wiring.
+Embeddings from the following providers are planned:
 
-# Future support
-- Embeddings from the following providers will be supported in future:
-  - Cohere
-  - Voyage
-  - OpenAI
+- Cohere
+- Voyage
 
 ## Quick start
 
@@ -73,7 +73,7 @@ Optional extras:
 
 - `embed-local` / `embed-local-cpu`: Sentence Transformers with **CPU** PyTorch.
 - `embed-local-gpu`: Sentence Transformers with a CUDA-enabled PyTorch install.
-- `embed-openai`: installs `openai` and `tiktoken` only.
+- `embed-openai`: OpenAI embeddings (`openai`, `tiktoken`).
 
 ### CPU
 
