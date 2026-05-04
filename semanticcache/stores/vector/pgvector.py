@@ -113,12 +113,9 @@ class AsyncPgVectorStore:
             if self._embedding_dim < 1 or self._embedding_dim > 16000:
                 msg = "embedding_dim out of supported range for VECTOR()"
                 raise ValueError(msg)
-            dim_lit = sql.SQL(
-                cast(LiteralString, str(self._embedding_dim))
-            )
+            dim_lit = sql.SQL(cast(LiteralString, str(self._embedding_dim)))
             tbl = sql.Identifier(self._table_name)
-            create_table = sql.SQL(
-                """
+            create_table = sql.SQL("""
                 CREATE TABLE IF NOT EXISTS {tbl} (
                   id SERIAL PRIMARY KEY,
                   query_text TEXT NOT NULL,
@@ -126,17 +123,14 @@ class AsyncPgVectorStore:
                   response JSONB NOT NULL,
                   created_at TIMESTAMPTZ DEFAULT NOW()
                 )
-                """
-            ).format(tbl=tbl, dim=dim_lit)
+                """).format(tbl=tbl, dim=dim_lit)
             idx_name = sql.Identifier(f"{self._table_name}_hnsw")
-            create_idx = sql.SQL(
-                """
+            create_idx = sql.SQL("""
                 CREATE INDEX IF NOT EXISTS {idx}
                 ON {tbl}
                 USING hnsw (query_embedding vector_cosine_ops)
                 WITH (m = 16, ef_construction = 64)
-                """
-            ).format(idx=idx_name, tbl=tbl)
+                """).format(idx=idx_name, tbl=tbl)
             async with self._pool.connection() as conn:
                 async with conn.cursor() as cur:
                     await cur.execute(create_table)
@@ -173,13 +167,11 @@ class AsyncPgVectorStore:
         self._ensure_dim(embedding)
         vec = _vector_literal(embedding)
         tbl = sql.Identifier(self._table_name)
-        insert = sql.SQL(
-            """
+        insert = sql.SQL("""
             INSERT INTO {tbl} (query_text, query_embedding, response)
             VALUES (%s, %s::vector, %s::jsonb)
             RETURNING id
-            """
-        ).format(tbl=tbl)
+            """).format(tbl=tbl)
         async with self._pool.connection() as conn:
             async with conn.cursor() as cur:
                 _ = await cur.execute(insert, (query_text, vec, Json(response)))
@@ -213,16 +205,14 @@ class AsyncPgVectorStore:
         self._ensure_dim(query_embedding)
         vec = _vector_literal(query_embedding)
         tbl = sql.Identifier(self._table_name)
-        stmt = sql.SQL(
-            """
+        stmt = sql.SQL("""
             SELECT id, query_text, response,
                    (1 - (query_embedding <=> %s::vector)) AS similarity
             FROM {tbl}
             WHERE query_embedding IS NOT NULL
             ORDER BY query_embedding <=> %s::vector
             LIMIT 1
-            """
-        ).format(tbl=tbl)
+            """).format(tbl=tbl)
         async with self._pool.connection() as conn:
             async with conn.cursor() as cur:
                 _ = await cur.execute(stmt, (vec, vec))
