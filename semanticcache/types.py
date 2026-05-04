@@ -4,11 +4,15 @@ from pydantic import BaseModel
 
 
 class CacheQuery(BaseModel):
+    """Request-shaped cache lookup payload (query text and optional model key)."""
+
     query: str
     model: str | None = None
 
 
 class CacheResult(BaseModel):
+    """Outcome of ``SemanticCache.get`` (hit or miss with optional payload)."""
+
     is_hit: bool
     similarity: float | None = None
     source: Literal[

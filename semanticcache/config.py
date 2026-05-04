@@ -1,5 +1,7 @@
 # pyright: reportCallIssue=false
 
+"""Environment-backed cache settings (Postgres, Redis, embedder selection)."""
+
 from typing import ClassVar, Literal
 
 from pydantic import AliasChoices, Field
@@ -102,4 +104,11 @@ class CacheSettings(BaseSettings):
 
 
 def get_cache_settings() -> CacheSettings:
+    """Load ``CacheSettings`` from process environment variables.
+
+    Variables use the ``SEMANTIC_CACHE_`` prefix (see ``CacheSettings`` fields).
+
+    Returns:
+        Validated settings instance.
+    """
     return CacheSettings()
