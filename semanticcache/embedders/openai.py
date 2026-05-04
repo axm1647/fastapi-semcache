@@ -29,7 +29,6 @@ class OpenAIEmbedder(BaseEmbedder):
 
     _model_name: str
     _dimensions: int
-    _normalize_embeddings: bool
 
     def __init__(
         self,
