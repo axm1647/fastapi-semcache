@@ -4,8 +4,7 @@ from ._base import BaseEmbedder
 
 
 class VoyageEmbedder(BaseEmbedder):
-    raise NotImplementedError()
 
     @override
-    async def embed(self, texts: list[str]) -> list[list[str]]:
+    async def embed(self, texts: list[str]) -> list[list[float]]:
         raise NotImplementedError()
