@@ -116,6 +116,23 @@ cache = SemanticCache(embedder=embedder, settings=get_cache_settings())
 Pick **`cache_namespace`** so it changes whenever model, pooling, or vector width changes; otherwise you risk reading incompatible rows from an old table.
 > Pick cache_namespace so it changes whenever model, pooling, or vector width changes; otherwise you risk reading incompatible rows from an old table. If storage is shared, include an application or environment prefix so your namespace cannot match another service’s built-in vendor:model:dimensions string by accident.
 
+## OpenAIEmbedder and `send_dimensions_to_api`
+
+**`OpenAIEmbedder`** (optional extra **`embed-openai`**) maps the `dimensions` constructor argument to both **storage width** and, by default, the OpenAI **`embeddings.create`** request body. Some models (for example **`text-embedding-ada-002`**) return a **fixed** vector size and the API may **reject** a `dimensions` parameter. In that case, set **`send_dimensions_to_api=False`**. The library still uses **`dimensions`** for `embedding_dim`, validation, and `cache_namespace` - it only **omits** the field from the API call.
+
+```python
+from semanticcache.embedders import OpenAIEmbedder
+
+# Fixed-size model: do not send "dimensions" to the API, but keep local width 1536.
+ada = OpenAIEmbedder(
+    model_name="text-embedding-ada-002",
+    dimensions=1536,
+    send_dimensions_to_api=False,
+)
+```
+
+For **`text-embedding-3-small`** / **`text-embedding-3-large`**, the default **`send_dimensions_to_api=True`** is appropriate when you want a reduced **output** width (as supported by that model family).
+
 ## Reusing a long-lived HTTP client
 
 Opening a client per `embed` call is simple but not ideal under load. You can hold an **`httpx.AsyncClient`** on the embedder and close it when your app shuts down (for example in a FastAPI lifespan handler). **`SemanticCache.close`** does not close your embedder.
