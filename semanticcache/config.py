@@ -1,6 +1,5 @@
 # pyright: reportCallIssue=false
 
-from functools import lru_cache
 from typing import ClassVar, Literal
 
 from pydantic import AliasChoices, Field
@@ -81,6 +80,5 @@ class CacheSettings(BaseSettings):
     )
 
 
-@lru_cache(maxsize=1)
 def get_cache_settings() -> CacheSettings:
     return CacheSettings()
