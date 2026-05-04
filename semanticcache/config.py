@@ -19,7 +19,9 @@ class CacheSettings(BaseSettings):
 
     threshold: float = Field(
         0.90,
-        description="Similarity threshold for cache hit (0.0–1.0)",
+        description="Similarity threshold for cache hit (0.0-1.0)",
+        ge=0.0,  # guard boundaries
+        le=1.0,
     )
     pg_uri: str = Field(
         "postgresql://user:pass@localhost:5432/semanticcache",
