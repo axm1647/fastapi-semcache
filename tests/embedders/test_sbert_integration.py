@@ -10,7 +10,6 @@ pytest.importorskip("sentence_transformers")
 
 from semanticcache.embedders.sbert import SBERTEmbedder
 
-
 # Default model: small, widely used; first run may download weights.
 _DEFAULT_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 _EXPECTED_DIM = 384
