@@ -86,7 +86,7 @@ class SBERTEmbedder(BaseEmbedder):
         self._model_name = model_name
         self._model = SentenceTransformer(
             model_name, token=get_cache_settings().hugging_face_api_key
-        ) # optional Hugging Face API key for private models and rate limiting
+        )  # optional Hugging Face API key for private models and rate limiting
         self._normalize_embeddings: bool = normalize_embeddings
 
     @property
