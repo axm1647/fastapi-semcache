@@ -10,7 +10,7 @@ from types import ModuleType
 # pyright: reportUnknownVariableType=false
 # pyright: reportUnknownArgumentType=false
 
-from typing import Any, final, override, TYPE_CHECKING
+from typing import Any, override, TYPE_CHECKING
 
 from ..exceptions import InvalidEmbeddingDimensionException
 from ._base import BaseEmbedder
@@ -58,7 +58,6 @@ def _encoding_for_model(tiktoken: ModuleType, model_name: str) -> Any:
         return tiktoken.get_encoding("cl100k_base")
 
 
-@final
 class OpenAIEmbedder(BaseEmbedder):
     """Embed text using the OpenAI ``embeddings`` API (async, batched)."""
 
