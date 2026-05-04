@@ -13,8 +13,12 @@ It includes **FastAPI** middleware as a first-class integration path and can als
 ## What is implemented
 
 - **Local embeddings** via Sentence Transformers (`embedder_type="local"`).
-- **PostgreSQL + pgvector** for semantic similarity lookup.
-- **Redis** for response caching.
+- **PostgreSQL + pgvector** for semantic similarity lookup. The library creates a
+  dedicated cache table per embedder configuration (derived from model id and vector
+  dimension) on first use, so you are not tied to a single hard-coded vector width.
+- **Redis** for response caching (keys include an embedder-specific prefix so separate
+  models do not collide).
+
 - **FastAPI middleware** for in-app semantic caching.
 - **Reverse proxy mode** via `create_semantic_cache_proxy_app()`.
 

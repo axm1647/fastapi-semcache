@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Literal
 from .config import get_cache_settings
 from .embedders import BaseEmbedder, get_embedder
 from .stores import AsyncPgVectorStore, RedisResponseStore
+from .stores.vector.storage_ids import embedding_storage_ids
 from .types import CacheResult
 
 if TYPE_CHECKING:
@@ -31,6 +32,7 @@ class SemanticCache:
     pg_uri: str
     redis_uri: str
     _embedding_dim: int
+    _redis_key_prefix: str
     _settings: "CacheSettings"
     _embedder: BaseEmbedder
     _vector_store: AsyncPgVectorStore
@@ -44,7 +46,7 @@ class SemanticCache:
         redis_uri: str | None = None,
         *,
         embedder: BaseEmbedder | None = None,
-        embedding_dim: int = 384,
+        embedding_dim: int | None = None,
         settings: "CacheSettings | None" = None,
     ) -> None:
         """Build stores and embedder from explicit args or ``CacheSettings``.
@@ -55,8 +57,8 @@ class SemanticCache:
             redis_uri: Redis URI for TTL response cache. Empty or whitespace-only
                 disables Redis (Postgres only).
             embedder: Custom embedder; defaults to ``get_embedder(settings)``.
-            embedding_dim: Vector dimension; must match ``cache_entries`` and the
-                embedder output.
+            embedding_dim: When set, must equal ``embedder.embedding_dim`` (safety
+                check). The embedder defines the vector width and storage namespace.
             settings: Base settings object; defaults to ``get_cache_settings()``.
         """
         self._settings = settings if settings is not None else get_cache_settings()
@@ -68,13 +70,26 @@ class SemanticCache:
             redis_uri if redis_uri is not None else self._settings.redis_uri
         )
         self.redis_uri = resolved_redis
-        self._embedding_dim = embedding_dim
         self._embedder = (
             embedder if embedder is not None else get_embedder(self._settings)
         )
+        resolved_dim = self._embedder.embedding_dim
+        if embedding_dim is not None and embedding_dim != resolved_dim:
+            msg = (
+                f"embedding_dim={embedding_dim} does not match "
+                f"embedder.embedding_dim={resolved_dim}"
+            )
+            raise ValueError(msg)
+        self._embedding_dim = resolved_dim
+        table_name, redis_prefix = embedding_storage_ids(
+            self._embedder.cache_namespace,
+            self._embedding_dim,
+        )
+        self._redis_key_prefix = redis_prefix
         max_pg = self._settings.pg_pool_size + self._settings.pg_pool_max_overflow
         self._vector_store = AsyncPgVectorStore(
             self.pg_uri,
+            table_name=table_name,
             embedding_dim=self._embedding_dim,
             min_pool_size=self._settings.pg_pool_size,
             max_pool_size=max_pg,
@@ -97,13 +112,14 @@ class SemanticCache:
             raise RuntimeError(msg)
         if not self._pg_open:
             await self._vector_store.open()
+            await self._vector_store.ensure_schema()
             self._pg_open = True
 
     async def get(self, query: str, model: str | None = None) -> CacheResult:
         """Embed the query, search vectors, then optionally resolve Redis by row id.
 
-        On a vector hit, the response body prefers Redis (key ``str(entry.id)``) when
-        present; otherwise the JSON from Postgres is returned.
+        On a vector hit, the response body prefers Redis (keyed by embedder namespace
+        plus row id) when present; otherwise the JSON from Postgres is returned.
 
         Args:
             query: Text to embed and match semantically.
@@ -127,7 +143,9 @@ class SemanticCache:
             return CacheResult(is_hit=False, similarity=None, source=src, response=None)
         response: dict[str, object] = entry.response
         if self._redis_store is not None:
-            from_redis = await self._redis_store.get(str(entry.id))
+            from_redis = await self._redis_store.get(
+                f"{self._redis_key_prefix}:{entry.id}"
+            )
             if from_redis is not None:
                 response = from_redis
         return CacheResult(
@@ -142,10 +160,11 @@ class SemanticCache:
     ) -> None:
         """Embed and persist the response in Postgres and optionally Redis.
 
-        Redis stores the same payload under ``str(row_id)`` with configured TTL.
+        Redis stores the same payload under a key scoped to this embedder plus
+        ``row_id``, with configured TTL.
 
         Args:
-            query: Query text stored alongside the embedding in ``cache_entries``.
+            query: Query text stored alongside the embedding in the pgvector table.
             response: JSON-serializable payload (mirrored in Redis when enabled).
             model: Reserved for future embedder routing (unused).
         """
@@ -158,7 +177,7 @@ class SemanticCache:
         embedding = vectors[0]
         row_id = await self._vector_store.upsert(query, embedding, response)
         if self._redis_store is not None:
-            await self._redis_store.put(str(row_id), response)
+            await self._redis_store.put(f"{self._redis_key_prefix}:{row_id}", response)
 
     async def close(self) -> None:
         """Close the Postgres pool and Redis client if they were opened."""

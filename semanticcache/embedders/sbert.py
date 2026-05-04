@@ -12,6 +12,24 @@ from typing import cast, final, override
 from ._base import BaseEmbedder
 
 
+def _require_positive_dim(dim: int) -> int:
+    """Validate embedding dimension for storage alignment.
+
+    Args:
+        dim: Declared vector length.
+
+    Returns:
+        Same value when valid.
+
+    Raises:
+        ValueError: If ``dim`` is not positive.
+    """
+    if dim < 1:
+        msg = "embedding_dim must be positive"
+        raise ValueError(msg)
+    return dim
+
+
 def _require_sentence_transformers():
     """Import sentence-transformers or raise with install hint.
 
@@ -39,9 +57,11 @@ def _require_sentence_transformers():
 class SBERTEmbedder(BaseEmbedder):
     """Embed text using a local sentence-transformers model.
 
-    Defaults to ``all-MiniLM-L6-v2`` (384-dimensional), matching the pgvector
-    schema in ``docker/init.sql``.
+    Defaults to ``all-MiniLM-L6-v2`` (384-dimensional). Vector tables are created at
+    runtime from ``embedding_dim`` and ``cache_namespace``.
     """
+
+    _model_name: str
 
     def __init__(
         self,
@@ -58,8 +78,33 @@ class SBERTEmbedder(BaseEmbedder):
                 cosine similarity with pgvector ``vector_cosine_ops``).
         """
         SentenceTransformer = _require_sentence_transformers()
+        self._model_name = model_name
         self._model = SentenceTransformer(model_name)
         self._normalize_embeddings: bool = normalize_embeddings
+
+    @property
+    @override
+    def embedding_dim(self) -> int:
+        """Return the model output dimension.
+
+        Returns:
+            Embedding width from the loaded SentenceTransformer.
+        """
+        dim_fn = getattr(self._model, "get_embedding_dimension", None)
+        if dim_fn is None:
+            dim_fn = self._model.get_sentence_embedding_dimension
+        dim = int(dim_fn())
+        return _require_positive_dim(dim)
+
+    @property
+    @override
+    def cache_namespace(self) -> str:
+        """Return a stable namespace for pgvector and Redis namespacing.
+
+        Returns:
+            Identifier derived from backend, model id, and dimension.
+        """
+        return f"sbert:{self._model_name}:{self.embedding_dim}"
 
     @override
     async def embed(self, texts: list[str]) -> list[list[float]]:

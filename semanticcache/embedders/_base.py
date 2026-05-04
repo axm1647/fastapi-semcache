@@ -6,6 +6,16 @@ from abc import ABC, abstractmethod
 class BaseEmbedder(ABC):
     """Abstract base class for pluggable text embedding backends."""
 
+    @property
+    @abstractmethod
+    def embedding_dim(self) -> int:
+        """Return dense vector length produced by ``embed``."""
+
+    @property
+    @abstractmethod
+    def cache_namespace(self) -> str:
+        """Return a stable id for this model configuration (storage namespacing)."""
+
     @abstractmethod
     async def embed(self, texts: list[str]) -> list[list[float]]:
         """Turn input strings into embedding vectors.

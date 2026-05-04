@@ -7,7 +7,7 @@ def _require_openai():
     """Import openai or raise with install hint.
 
     Returns:
-        The  class.
+        Tuple of the ``openai`` and ``tiktoken`` modules.
 
     Raises:
         ImportError: If openai and tiktoken are not installed.
@@ -24,21 +24,54 @@ def _require_openai():
 
 
 class OpenAIEmbedder(BaseEmbedder):
+    """Embed text with a hosted OpenAI embedding model (not yet implemented)."""
+
+    _model_name: str
+    _dimensions: int
+    _normalize_embeddings: bool
+
     def __init__(
         self,
         model_name: str = "text-embedding-3-small",
         *,
-        _normalize_embeddings: bool = True,
+        dimensions: int = 384,
+        normalize_embeddings: bool = True,
     ) -> None:
-        """
-        Embed text with hosted openai embedding model.
+        """Declare OpenAI embedding settings for dimension and table namespacing.
 
-        Defaults to ``text-embedding-3-small``
-        OpenAI embedding models don't expose a normalize param so this doesn't do anything.
-        It is kept to stay consistent with SBERTEmbedder()
+        Args:
+            model_name: Embedding model id passed to the OpenAI API.
+            dimensions: Requested embedding width (must match the pgvector column).
+            normalize_embeddings: When True, L2-normalize vectors after the API
+                returns (for cosine distance with pgvector).
         """
         _ = _require_openai()
-        raise NotImplementedError()
+        if dimensions < 1:
+            msg = "dimensions must be positive"
+            raise ValueError(msg)
+        self._model_name = model_name
+        self._dimensions = dimensions
+        self._normalize_embeddings = normalize_embeddings
+
+    @property
+    @override
+    def embedding_dim(self) -> int:
+        """Return the configured embedding width.
+
+        Returns:
+            Value of ``dimensions`` passed at construction.
+        """
+        return self._dimensions
+
+    @property
+    @override
+    def cache_namespace(self) -> str:
+        """Return a stable namespace for pgvector and Redis namespacing.
+
+        Returns:
+            Identifier derived from backend, model id, and dimension.
+        """
+        return f"openai:{self._model_name}:{self._dimensions}"
 
     @override
     async def embed(self, texts: list[str]) -> list[list[float]]:
