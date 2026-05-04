@@ -8,10 +8,11 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class CacheSettings(BaseSettings):
+    """Load cache configuration from process environment variables only."""
+
     model_config: ClassVar[SettingsConfigDict] = SettingsConfigDict(
         env_prefix="SEMANTIC_CACHE_",
-        env_file=".env",
-        env_file_encoding="utf-8",
+        env_file=None,
         extra="ignore",
     )
 
