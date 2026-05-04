@@ -8,7 +8,7 @@ The PyPI distribution name is **`semanticcache-py`** (the import package remains
 
 SemanticCache is designed for direct integration into modern Python API stacks with no refactoring needed. It keeps the caching path simple and gives you explicit control over embeddings, vector search, and cache behavior.
 
-It includes **FastAPI** middleware as a first-class integration path and can also run as a reverse proxy in front of an upstream API or LLM service.
+It includes **FastAPI** middleware as a first-class integration path and can also run as a reverse proxy in front of an upstream API or LLM service. **Django** and **Flask** middleware are planned for a future release so you can hook semantic caching into those stacks the same way as FastAPI.
 
 ## What is implemented
 
@@ -27,6 +27,8 @@ It includes **FastAPI** middleware as a first-class integration path and can als
 - **Reverse proxy mode** via `create_semantic_cache_proxy_app()`.
 
 ## Future support
+
+- **Django** and **Flask** middleware for in-app semantic caching (not yet shipped. same role as the FastAPI middleware).
 
 Embeddings from the following providers are planned:
 
