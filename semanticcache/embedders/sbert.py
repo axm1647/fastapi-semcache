@@ -49,10 +49,10 @@ def _require_sentence_transformers():
     except ImportError as exc:
         _missing = (
             "SBERTEmbedder requires optional dependencies. CPU: pip install "
-            "'semanticcache-py[embed-huggingface-cpu]'. GPU (CUDA PyTorch): pip install "
-            "'semanticcache-py[embed-huggingface-gpu]' with --extra-index-url from "
+            "'fastapi-semcache[embed-huggingface-cpu]'. GPU (CUDA PyTorch): pip install "
+            "'fastapi-semcache[embed-huggingface-gpu]' with --extra-index-url from "
             "https://pytorch.org/get-started/locally/ (see README). Shorthand for "
-            "CPU: pip install 'semanticcache-py[embed-huggingface]'."
+            "CPU: pip install 'fastapi-semcache[embed-huggingface]'."
         )
         raise ImportError(_missing) from exc
     return ST

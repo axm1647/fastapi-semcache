@@ -236,6 +236,64 @@ wheels = [
 ]
 
 [[package]]
+name = "fastapi-semcache"
+version = "0.2.7"
+source = { editable = "." }
+dependencies = [
+    { name = "fastapi" },
+    { name = "httpx" },
+    { name = "psycopg", extra = ["binary"] },
+    { name = "psycopg-pool" },
+    { name = "pydantic-settings" },
+    { name = "redis" },
+]
+
+[package.optional-dependencies]
+embed-huggingface = [
+    { name = "sentence-transformers" },
+    { name = "torch" },
+]
+embed-huggingface-cpu = [
+    { name = "sentence-transformers" },
+    { name = "torch" },
+]
+embed-huggingface-gpu = [
+    { name = "sentence-transformers" },
+    { name = "torch" },
+]
+embed-openai = [
+    { name = "openai" },
+    { name = "tiktoken" },
+]
+test = [
+    { name = "numpy" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "fastapi", specifier = ">=0.136.1" },
+    { name = "httpx", specifier = ">=0.27.0" },
+    { name = "numpy", marker = "extra == 'test'", specifier = ">=1.24" },
+    { name = "openai", marker = "extra == 'embed-openai'", specifier = ">=1.40" },
+    { name = "psycopg", extras = ["binary"], specifier = ">=3.3.3" },
+    { name = "psycopg-pool", specifier = ">=3.3.0" },
+    { name = "pydantic-settings", specifier = ">=2.14.0" },
+    { name = "pytest", marker = "extra == 'test'", specifier = ">=8.0" },
+    { name = "pytest-asyncio", marker = "extra == 'test'", specifier = ">=0.24" },
+    { name = "redis", specifier = ">=7.4.0" },
+    { name = "sentence-transformers", marker = "extra == 'embed-huggingface'", specifier = ">=3.0" },
+    { name = "sentence-transformers", marker = "extra == 'embed-huggingface-cpu'", specifier = ">=3.0" },
+    { name = "sentence-transformers", marker = "extra == 'embed-huggingface-gpu'", specifier = ">=3.0" },
+    { name = "tiktoken", marker = "extra == 'embed-openai'", specifier = ">=0.7" },
+    { name = "torch", marker = "extra == 'embed-huggingface'", specifier = ">=2.1.0" },
+    { name = "torch", marker = "extra == 'embed-huggingface-cpu'", specifier = ">=2.1.0" },
+    { name = "torch", marker = "extra == 'embed-huggingface-gpu'", specifier = ">=2.1.0" },
+]
+provides-extras = ["embed-huggingface-cpu", "embed-huggingface-gpu", "embed-huggingface", "embed-openai", "test"]
+
+[[package]]
 name = "filelock"
 version = "3.29.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1320,64 +1378,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/11/2f/b29eafe4a3fbc3d6de9662b36e028d5f039e72d345e05c250e121a230dd4/scipy-1.17.1-cp314-cp314t-win_amd64.whl", hash = "sha256:eb092099205ef62cd1782b006658db09e2fed75bffcae7cc0d44052d8aa0f484", size = 37345327, upload-time = "2026-02-23T00:22:24.442Z" },
     { url = "https://files.pythonhosted.org/packages/07/39/338d9219c4e87f3e708f18857ecd24d22a0c3094752393319553096b98af/scipy-1.17.1-cp314-cp314t-win_arm64.whl", hash = "sha256:200e1050faffacc162be6a486a984a0497866ec54149a01270adc8a59b7c7d21", size = 25489165, upload-time = "2026-02-23T00:22:29.563Z" },
 ]
-
-[[package]]
-name = "semanticcache-py"
-version = "0.2.7"
-source = { editable = "." }
-dependencies = [
-    { name = "fastapi" },
-    { name = "httpx" },
-    { name = "psycopg", extra = ["binary"] },
-    { name = "psycopg-pool" },
-    { name = "pydantic-settings" },
-    { name = "redis" },
-]
-
-[package.optional-dependencies]
-embed-huggingface = [
-    { name = "sentence-transformers" },
-    { name = "torch" },
-]
-embed-huggingface-cpu = [
-    { name = "sentence-transformers" },
-    { name = "torch" },
-]
-embed-huggingface-gpu = [
-    { name = "sentence-transformers" },
-    { name = "torch" },
-]
-embed-openai = [
-    { name = "openai" },
-    { name = "tiktoken" },
-]
-test = [
-    { name = "numpy" },
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "fastapi", specifier = ">=0.136.1" },
-    { name = "httpx", specifier = ">=0.27.0" },
-    { name = "numpy", marker = "extra == 'test'", specifier = ">=1.24" },
-    { name = "openai", marker = "extra == 'embed-openai'", specifier = ">=1.40" },
-    { name = "psycopg", extras = ["binary"], specifier = ">=3.3.3" },
-    { name = "psycopg-pool", specifier = ">=3.3.0" },
-    { name = "pydantic-settings", specifier = ">=2.14.0" },
-    { name = "pytest", marker = "extra == 'test'", specifier = ">=8.0" },
-    { name = "pytest-asyncio", marker = "extra == 'test'", specifier = ">=0.24" },
-    { name = "redis", specifier = ">=7.4.0" },
-    { name = "sentence-transformers", marker = "extra == 'embed-huggingface'", specifier = ">=3.0" },
-    { name = "sentence-transformers", marker = "extra == 'embed-huggingface-cpu'", specifier = ">=3.0" },
-    { name = "sentence-transformers", marker = "extra == 'embed-huggingface-gpu'", specifier = ">=3.0" },
-    { name = "tiktoken", marker = "extra == 'embed-openai'", specifier = ">=0.7" },
-    { name = "torch", marker = "extra == 'embed-huggingface'", specifier = ">=2.1.0" },
-    { name = "torch", marker = "extra == 'embed-huggingface-cpu'", specifier = ">=2.1.0" },
-    { name = "torch", marker = "extra == 'embed-huggingface-gpu'", specifier = ">=2.1.0" },
-]
-provides-extras = ["embed-huggingface-cpu", "embed-huggingface-gpu", "embed-huggingface", "embed-openai", "test"]
 
 [[package]]
 name = "sentence-transformers"

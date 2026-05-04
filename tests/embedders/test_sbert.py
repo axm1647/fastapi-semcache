@@ -53,7 +53,7 @@ def test_require_sentence_transformers_import_error(
         return real_import(name, *args, **kwargs)
 
     monkeypatch.setattr(builtins, "__import__", import_hook)
-    with pytest.raises(ImportError, match=r"semanticcache-py\[embed-huggingface"):
+    with pytest.raises(ImportError, match=r"fastapi-semcache\[embed-huggingface"):
         _require_sentence_transformers()
 
 

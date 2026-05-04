@@ -3,7 +3,7 @@ requires = ["setuptools>=77.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "semanticcache-py"
+name = "fastapi-semcache"
 version = "0.2.7"
 description = "Drop in FastAPI middleware/reverse proxy with semantic caching for APIs & LLMs"
 readme = "README.md"
@@ -50,9 +50,9 @@ test = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/axm1647/SemanticCache-py"
-Repository = "https://github.com/axm1647/SemanticCache-py"
-Issues = "https://github.com/axm1647/SemanticCache-py/issues"
+Homepage = "https://github.com/axm1647/fastapi-semcache"
+Repository = "https://github.com/axm1647/fastapi-semcache"
+Issues = "https://github.com/axm1647/fastapi-semcache/issues"
 
 [tool.setuptools.packages.find]
 where = ["."]

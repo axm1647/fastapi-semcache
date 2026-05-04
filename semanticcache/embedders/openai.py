@@ -37,7 +37,7 @@ def _require_openai() -> tuple[ModuleType, ModuleType]:
         import openai
         import tiktoken
     except ImportError as exc:
-        _missing = "OpenAIEmbedder requires optional dependencies. pip install 'semanticcache-py[embed-openai]'."
+        _missing = "OpenAIEmbedder requires optional dependencies. pip install 'fastapi-semcache[embed-openai]'."
         raise ImportError(_missing) from exc
     return openai, tiktoken
 

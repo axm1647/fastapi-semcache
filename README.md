@@ -1,12 +1,12 @@
-# semanticcache
+# fastapi-semcache
 
 Semantic caching middleware and reverse proxy for APIs and LLMs, with embeddings, pgvector similarity search, and Redis-backed response caching.
 
-The PyPI distribution name is **`semanticcache-py`** (the import package remains `semanticcache`).
+The PyPI distribution and GitHub repository are **`fastapi-semcache`** (the import package remains **`semanticcache`**).
 
-## Why SemanticCache?
+## Why fastapi-semcache?
 
-SemanticCache is designed for direct integration into modern Python API stacks with minimal refactoring needed. It keeps the caching path simple and gives you explicit control over embeddings, vector search, and cache behavior.
+This package is designed for direct integration into modern Python API stacks with minimal refactoring needed. It keeps the caching path simple and gives you explicit control over embeddings, vector search, and cache behavior.
 
 It includes **FastAPI** middleware as a first-class integration path and can also run as a reverse proxy in front of an upstream API or LLM service. **Django** and **Flask** middleware are planned for a future release so you can hook semantic caching into those stacks the same way as FastAPI.
 
@@ -69,7 +69,7 @@ See `create_semantic_cache_proxy_app` in `semanticcache.proxy` for timeout, TLS 
 ## Install
 
 ```bash
-pip install semanticcache-py
+pip install fastapi-semcache
 ```
 
 **Custom embedders:** subclass `BaseEmbedder` from `semanticcache.embedders` and pass it to `SemanticCache(embedder=...)` to skip the optional embedding extras. See [docs/embedders.md](docs/embedders.md).
@@ -83,8 +83,8 @@ Optional extras:
 ### CPU
 
 ```bash
-pip install "semanticcache-py[embed-huggingface-cpu]"
-# or: pip install "semanticcache-py[embed-huggingface]"
+pip install "fastapi-semcache[embed-huggingface-cpu]"
+# or: pip install "fastapi-semcache[embed-huggingface]"
 ```
 
 ### GPU
@@ -92,7 +92,7 @@ pip install "semanticcache-py[embed-huggingface-cpu]"
 Pick a CUDA version that matches your system from [PyTorch Get Started](https://pytorch.org/get-started/locally/), then install with that index so pip selects CUDA wheels.
 
 ```bash
-pip install "semanticcache-py[embed-huggingface-gpu]" \
+pip install "fastapi-semcache[embed-huggingface-gpu]" \
   --extra-index-url https://download.pytorch.org/whl/cu124
 ```
 
@@ -101,7 +101,7 @@ pip install "semanticcache-py[embed-huggingface-gpu]" \
 Install the OpenAI extra so `embedder_type="openai"` works (pulls `openai` and `tiktoken`). Set `OPENAI_API_KEY` in your environment.
 
 ```bash
-pip install "semanticcache-py[embed-openai]"
+pip install "fastapi-semcache[embed-openai]"
 ```
 
 ## Requirements
@@ -110,7 +110,7 @@ Python 3.12+.
 
 ## Links
 
-- Repository: [SemanticCache-py](https://github.com/axm1647/SemanticCache-py)
+- Repository: [fastapi-semcache](https://github.com/axm1647/fastapi-semcache)
 
 ## License
 
