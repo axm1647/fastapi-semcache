@@ -26,6 +26,10 @@ def get_embedder(settings: CacheSettings | None = None) -> BaseEmbedder:
         return SBERTEmbedder()
     if resolved.embedder_type == "openai":
         return OpenAIEmbedder()
+    if resolved.embedder_type == "cohere":
+        raise NotImplementedError("Cohere embeddings are not supported yet.")
+    if resolved.embedder_type == "voyage":
+        raise NotImplementedError("Voyage embeddings are not supported yet.")
     raise NotSupportedEmbedderException(
         "This embeddings option is not supported. "
         "Please check README for available embedding options."
