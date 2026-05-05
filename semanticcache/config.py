@@ -28,8 +28,11 @@ class CacheSettings(BaseSettings):
         description="PostgreSQL URI with pgvector extension",
     )
     redis_uri: str = Field(
-        "redis://localhost:6379/0",
-        description="Redis URI for cache TTL",
+        "",
+        description=(
+            "Redis URI for cache TTL (empty/whitespace disables Redis and uses "
+            "Postgres-only response storage)"
+        ),
     )
     redis_ttl_seconds: int = Field(
         3600,

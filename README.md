@@ -1,6 +1,6 @@
 # fastapi-semcache
 
-Semantic caching middleware and reverse proxy for APIs and LLMs, with embeddings, pgvector similarity search, and Redis-backed response caching.
+Semantic caching middleware and reverse proxy for APIs and LLMs, with embeddings, pgvector similarity search, and optional Redis response caching.
 
 The PyPI distribution and GitHub repository are **`fastapi-semcache`** (the import package remains **`semanticcache`**).
 
@@ -13,6 +13,8 @@ It includes **FastAPI** middleware as a first-class integration path and can als
 ## FastAPI middleware
 
 Add `SemanticCacheMiddleware` to your app and reuse one `SemanticCache` instance for all requests. Configure Postgres, Redis, and the embedder with **`SEMANTIC_CACHE_*`** environment variables (see `.env.example`). By default only **`POST`** requests are intercepted; the middleware derives cache-key text from JSON bodies using `query`, `prompt`, `input`, or chat-style `messages` (see `default_extract_query` in `semanticcache.middleware`). Successful responses whose body parses as a **JSON object** are candidates for storage.
+
+Redis is optional. If **`SEMANTIC_CACHE_REDIS_URI`** is empty (or whitespace), the cache runs in Postgres-only mode: semantic lookup and response storage still work via pgvector, but Redis TTL-based payload caching is disabled.
 
 ```python
 from typing import Any
@@ -78,8 +80,9 @@ Other advanced options (`path_prefix`, HTTP 429 circuit breaker via `cache_setti
 - **PostgreSQL + pgvector** for semantic similarity lookup. The library creates a
   dedicated cache table per embedder configuration (derived from model id and vector
   dimension) on first use, so you are not tied to a single hard-coded vector width.
-- **Redis** for response caching (keys include an embedder-specific prefix so separate
-  models do not collide).
+- **Optional Redis** for response caching (keys include an embedder-specific prefix
+  so separate models do not collide). If Redis is not configured, responses are read
+  from Postgres only.
 
 - **FastAPI middleware** for in-app semantic caching.
 - **Reverse proxy mode** via `create_semantic_cache_proxy_app()`.
