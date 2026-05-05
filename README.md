@@ -70,6 +70,15 @@ Use **`extract_model`** when the cache key should also vary by model id from hea
 
 Other advanced options (`path_prefix`, HTTP 429 circuit breaker via `cache_settings`, `enabled=False`) are documented on **`SemanticCacheMiddleware`** in `semanticcache.middleware.fastapi`. On shutdown, call `await cache.close()` from a lifespan handler if you want pools closed cleanly.
 
+### Cache behavior and tuning
+
+`SemanticCache` uses a two-stage retrieval pipeline:
+
+- A **primary similarity threshold** (`SEMANTIC_CACHE_THRESHOLD`) and **top-k candidate limit** (`SEMANTIC_CACHE_TOP_K_CANDIDATES`) control which nearest neighbors are fetched from pgvector.
+- An optional **rejection threshold** (`SEMANTIC_CACHE_REJECTION_THRESHOLD`) can then filter out borderline matches; if no candidate passes this second stage, the middleware returns a cache miss.
+
+See `docs/cache-tuning.md` for concrete tuning tips and examples.
+
 ## What is implemented
 
 - **Huggingface embeddings** via Sentence Transformers (`embedder_type="huggingface"`).
