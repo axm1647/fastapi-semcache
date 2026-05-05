@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import logging
 from contextlib import asynccontextmanager
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
 
 import httpx
@@ -18,9 +18,23 @@ from fastapi import FastAPI, Request
 from starlette.responses import Response
 
 from .cache import SemanticCache
+from .config import get_cache_settings
 from .middleware.fastapi import SemanticCacheMiddleware
 
+if TYPE_CHECKING:
+    from .config import CacheSettings
+
 _logger = logging.getLogger(__name__)
+
+_settings: "CacheSettings" = get_cache_settings()
+
+_DISABLE_PROXY_APP_DOCS: bool = _settings.disable_proxy_app_docs
+_PROXY_APP_OPENAPI_URL: str | None = (
+    None if _DISABLE_PROXY_APP_DOCS else "/openapi.json"
+)
+_PROXY_APP_DOCS_URL: str | None = None if _DISABLE_PROXY_APP_DOCS else "/docs"
+_PROXY_APP_REDOC_URL: str | None = None if _DISABLE_PROXY_APP_DOCS else "/redoc"
+
 
 _HOP_BY_HOP: frozenset[str] = frozenset(
     {
@@ -174,7 +188,13 @@ def create_semantic_cache_proxy_app(
             app.state.proxy_upstream_base = base
             yield
 
-    app = FastAPI(lifespan=lifespan, title="Semantic cache proxy")
+    app = FastAPI(
+        lifespan=lifespan,
+        title="Semantic cache proxy",
+        openapi_url=_PROXY_APP_OPENAPI_URL,
+        docs_url=_PROXY_APP_DOCS_URL,
+        redoc_url=_PROXY_APP_REDOC_URL,
+    )
     app.add_middleware(SemanticCacheMiddleware, cache=cache, **middleware_kwargs)
 
     @app.api_route(

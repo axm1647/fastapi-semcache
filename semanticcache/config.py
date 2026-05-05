@@ -17,6 +17,8 @@ class CacheSettings(BaseSettings):
         extra="ignore",
     )
 
+    disable_proxy_app_docs: bool = True  # hides documentation urls for proxy app
+
     threshold: float = Field(
         0.90,
         description="Similarity threshold for cache hit (0.0-1.0)",
