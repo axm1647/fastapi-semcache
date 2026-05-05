@@ -149,21 +149,42 @@ class SemanticCache:
         if not vectors:
             return CacheResult(is_hit=False, similarity=None, source=src, response=None)
         query_embedding = vectors[0]
-        entry = await self._vector_store.similarity_search(
-            query_embedding, self.threshold
+        # Stage 1: fetch top-k nearest candidates using the primary threshold.
+        top_k = max(1, getattr(self._settings, "top_k_candidates", 1))
+        entries = await self._vector_store.similarity_search_top_k(
+            query_embedding=query_embedding,
+            threshold=self.threshold,
+            limit=top_k,
         )
-        if entry is None:
+        if not entries:
             return CacheResult(is_hit=False, similarity=None, source=src, response=None)
-        response: dict[str, object] = entry.response
+
+        # Stage 2: apply optional rejection threshold to filter borderline scores.
+        rejection_threshold = getattr(self._settings, "rejection_threshold", None)
+        chosen_entry = None
+        if rejection_threshold is not None:
+            for candidate in entries:
+                if candidate.similarity >= rejection_threshold:
+                    chosen_entry = candidate
+                    break
+            if chosen_entry is None:
+                # All candidates failed the stricter second-stage gate; treat as miss.
+                return CacheResult(
+                    is_hit=False, similarity=None, source=src, response=None
+                )
+        else:
+            chosen_entry = entries[0]
+
+        response: dict[str, object] = chosen_entry.response
         if self._redis_store is not None:
             from_redis = await self._redis_store.get(
-                f"{self._redis_key_prefix}:{entry.id}"
+                f"{self._redis_key_prefix}:{chosen_entry.id}"
             )
             if from_redis is not None:
                 response = from_redis
         return CacheResult(
             is_hit=True,
-            similarity=entry.similarity,
+            similarity=chosen_entry.similarity,
             source=src,
             response=response,
         )

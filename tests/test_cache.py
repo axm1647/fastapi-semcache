@@ -87,14 +87,14 @@ async def test_get_miss_when_store_returns_none() -> None:
     mock_vs = AsyncMock()
     mock_vs.open = AsyncMock()
     mock_vs.ensure_schema = AsyncMock()
-    mock_vs.similarity_search = AsyncMock(return_value=None)
+    mock_vs.similarity_search_top_k = AsyncMock(return_value=[])
     cache._vector_store = mock_vs
 
     result = await cache.get("hello world")
     assert result.is_hit is False
     assert result.similarity is None
     assert result.response is None
-    mock_vs.similarity_search.assert_awaited_once()
+    mock_vs.similarity_search_top_k.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -110,7 +110,7 @@ async def test_get_hit_returns_redis_free_payload() -> None:
     mock_vs = AsyncMock()
     mock_vs.open = AsyncMock()
     mock_vs.ensure_schema = AsyncMock()
-    mock_vs.similarity_search = AsyncMock(return_value=entry)
+    mock_vs.similarity_search_top_k = AsyncMock(return_value=[entry])
     cache._vector_store = mock_vs
 
     result = await cache.get("similar query")
@@ -137,7 +137,7 @@ async def test_get_hit_prefers_redis_when_enabled() -> None:
     mock_vs = AsyncMock()
     mock_vs.open = AsyncMock()
     mock_vs.ensure_schema = AsyncMock()
-    mock_vs.similarity_search = AsyncMock(return_value=entry)
+    mock_vs.similarity_search_top_k = AsyncMock(return_value=[entry])
     cache._vector_store = mock_vs
 
     mock_redis = AsyncMock()
@@ -196,4 +196,4 @@ async def test_get_empty_embed_returns_miss() -> None:
     assert out == CacheResult(
         is_hit=False, similarity=None, source="embedders.sbert", response=None
     )
-    mock_vs.similarity_search.assert_not_called()
+    mock_vs.similarity_search_top_k.assert_not_called()

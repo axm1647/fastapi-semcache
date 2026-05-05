@@ -181,6 +181,67 @@ class AsyncPgVectorStore:
                     raise RuntimeError(msg)
                 return int(row[0])
 
+    async def similarity_search_top_k(
+        self,
+        query_embedding: list[float],
+        threshold: float,
+        limit: int,
+    ) -> list[CacheEntry]:
+        """Find up to ``limit`` nearest rows and apply a similarity gate.
+
+        Uses ``<=>`` (cosine distance). Similarity is ``1 - distance``, comparable
+        to cosine similarity for normalized vectors.
+
+        Args:
+            query_embedding: Query vector of length ``embedding_dim``.
+            threshold: Minimum similarity in ``[0.0, 1.0]`` for a hit.
+            limit: Maximum number of candidates to return (top-k).
+
+        Returns:
+            List of ``CacheEntry`` objects ordered from highest to lowest similarity,
+            filtered to those at or above ``threshold``. The list is empty on miss.
+
+        Raises:
+            ValueError: If ``query_embedding`` length does not match ``embedding_dim``.
+        """
+        if limit <= 0:
+            return []
+        self._ensure_dim(query_embedding)
+        vec = _vector_literal(query_embedding)
+        tbl = sql.Identifier(self._table_name)
+        stmt = sql.SQL("""
+            SELECT id, query_text, response,
+                   (1 - (query_embedding <=> %s::vector)) AS similarity
+            FROM {tbl}
+            WHERE query_embedding IS NOT NULL
+            ORDER BY query_embedding <=> %s::vector
+            LIMIT %s
+            """).format(tbl=tbl)
+        async with self._pool.connection() as conn:
+            async with conn.cursor() as cur:
+                _ = await cur.execute(stmt, (vec, vec, limit))
+                rows = await cur.fetchall()
+                entries: list[CacheEntry] = []
+                for row in rows:
+                    rid, qtext, resp, similarity = row
+                    sim = float(similarity)
+                    if sim < threshold:
+                        continue
+                    if not isinstance(resp, dict):
+                        msg = (
+                            "cache response column must deserialize to a JSON object"
+                        )
+                        raise TypeError(msg)
+                    entries.append(
+                        CacheEntry(
+                            id=int(rid),
+                            query_text=str(qtext),
+                            response=resp,
+                            similarity=sim,
+                        )
+                    )
+                return entries
+
     async def similarity_search(
         self,
         query_embedding: list[float],
@@ -188,8 +249,8 @@ class AsyncPgVectorStore:
     ) -> CacheEntry | None:
         """Find the nearest row by cosine distance and apply a similarity gate.
 
-        Uses ``<=>`` (cosine distance). Similarity is ``1 - distance``, comparable
-        to cosine similarity for normalized vectors.
+        This compatibility wrapper delegates to ``similarity_search_top_k`` with
+        ``limit=1``.
 
         Args:
             query_embedding: Query vector of length ``embedding_dim``.
@@ -202,33 +263,11 @@ class AsyncPgVectorStore:
         Raises:
             ValueError: If ``query_embedding`` length does not match ``embedding_dim``.
         """
-        self._ensure_dim(query_embedding)
-        vec = _vector_literal(query_embedding)
-        tbl = sql.Identifier(self._table_name)
-        stmt = sql.SQL("""
-            SELECT id, query_text, response,
-                   (1 - (query_embedding <=> %s::vector)) AS similarity
-            FROM {tbl}
-            WHERE query_embedding IS NOT NULL
-            ORDER BY query_embedding <=> %s::vector
-            LIMIT 1
-            """).format(tbl=tbl)
-        async with self._pool.connection() as conn:
-            async with conn.cursor() as cur:
-                _ = await cur.execute(stmt, (vec, vec))
-                row = await cur.fetchone()
-                if row is None:
-                    return None
-                rid, qtext, resp, similarity = row
-                sim = float(similarity)
-                if sim < threshold:
-                    return None
-                if not isinstance(resp, dict):
-                    msg = "cache response column must deserialize to a JSON object"
-                    raise TypeError(msg)
-                return CacheEntry(
-                    id=int(rid),
-                    query_text=str(qtext),
-                    response=resp,
-                    similarity=sim,
-                )
+        entries = await self.similarity_search_top_k(
+            query_embedding=query_embedding,
+            threshold=threshold,
+            limit=1,
+        )
+        if not entries:
+            return None
+        return entries[0]

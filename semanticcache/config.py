@@ -21,14 +21,27 @@ class CacheSettings(BaseSettings):
 
     top_k_candidates: int = Field(
         1,
-        description="NUmber of entries returned with similarity above the threshold",
+        description=(
+            "Maximum number of nearest-neighbor candidates fetched before applying "
+            "the final similarity decision step."
+        ),
         ge=1,
     )
 
     threshold: float = Field(
         0.90,
-        description="Similarity threshold for cache hit (0.0-1.0)",
+        description="Primary similarity threshold for candidate inclusion (0.0-1.0).",
         ge=0.0,  # guard boundaries
+        le=1.0,
+    )
+    rejection_threshold: float | None = Field(
+        default=None,
+        description=(
+            "Optional second-stage similarity threshold used to reject borderline "
+            "matches after initially fetching top_k_candidates. When unset, "
+            "threshold alone controls cache hits."
+        ),
+        ge=0.0,
         le=1.0,
     )
     pg_uri: str = Field(
