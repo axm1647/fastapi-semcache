@@ -19,6 +19,12 @@ class CacheSettings(BaseSettings):
 
     disable_proxy_app_docs: bool = True  # hides documentation urls for proxy app
 
+    top_k_candidates: int = Field(
+        1,
+        description="NUmber of entries returned with similarity above the threshold",
+        ge=1,
+    )
+
     threshold: float = Field(
         0.90,
         description="Similarity threshold for cache hit (0.0-1.0)",
