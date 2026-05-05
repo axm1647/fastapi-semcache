@@ -151,6 +151,86 @@ async def test_get_hit_prefers_redis_when_enabled() -> None:
 
 
 @pytest.mark.asyncio
+async def test_get_rejection_threshold_filters_out_borderline_candidates() -> None:
+    """Second-stage rejection threshold can turn candidates into a miss."""
+    settings = CacheSettings(
+        redis_uri=" ",
+        pg_uri="postgresql://mock/mock",
+        threshold=0.80,
+        top_k_candidates=3,
+        rejection_threshold=0.90,
+    )
+    cache = _make_cache(_FixedEmbedder(), settings=settings)
+
+    # All candidates are above the primary threshold but below the stricter rejection
+    # threshold, so the second stage should yield a miss.
+    entries = [
+        CacheEntry(
+            id=1,
+            query_text="q1",
+            response={"answer": 1},
+            similarity=0.85,
+        ),
+        CacheEntry(
+            id=2,
+            query_text="q2",
+            response={"answer": 2},
+            similarity=0.88,
+        ),
+    ]
+
+    mock_vs = AsyncMock()
+    mock_vs.open = AsyncMock()
+    mock_vs.ensure_schema = AsyncMock()
+    mock_vs.similarity_search_top_k = AsyncMock(return_value=entries)
+    cache._vector_store = mock_vs
+
+    result = await cache.get("borderline query")
+    assert result.is_hit is False
+    assert result.response is None
+    assert result.similarity is None
+    mock_vs.similarity_search_top_k.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_get_rejection_threshold_accepts_strong_candidate() -> None:
+    """Second-stage rejection threshold selects the first strong-enough candidate."""
+    settings = CacheSettings(
+        redis_uri=" ",
+        pg_uri="postgresql://mock/mock",
+        threshold=0.80,
+        top_k_candidates=3,
+        rejection_threshold=0.90,
+    )
+    cache = _make_cache(_FixedEmbedder(), settings=settings)
+
+    weak = CacheEntry(
+        id=1,
+        query_text="weak",
+        response={"answer": "weak"},
+        similarity=0.88,
+    )
+    strong = CacheEntry(
+        id=2,
+        query_text="strong",
+        response={"answer": "strong"},
+        similarity=0.93,
+    )
+
+    mock_vs = AsyncMock()
+    mock_vs.open = AsyncMock()
+    mock_vs.ensure_schema = AsyncMock()
+    mock_vs.similarity_search_top_k = AsyncMock(return_value=[weak, strong])
+    cache._vector_store = mock_vs
+
+    result = await cache.get("query")
+    assert result.is_hit is True
+    assert result.response == {"answer": "strong"}
+    assert result.similarity is not None and abs(result.similarity - 0.93) < 1e-9
+    mock_vs.similarity_search_top_k.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_put_raises_when_embed_returns_empty() -> None:
     """Store path fails closed when ``embed`` yields no rows."""
     cache = _make_cache(_EmptyEmbedder())
