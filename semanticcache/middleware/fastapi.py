@@ -12,7 +12,7 @@ import json
 import logging
 import time
 from collections.abc import Awaitable, Callable, MutableMapping, Sequence
-from typing import TYPE_CHECKING, cast, override
+from typing import TYPE_CHECKING, override
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -501,12 +501,16 @@ class SemanticCacheMiddleware(BaseHTTPMiddleware):
                 return response
 
             chunks: list[bytes] = []
-            stream_resp = cast(StreamingResponse, response)
-            # BaseHTTPMiddleware.call_next wraps the route response so the body is
-            # exposed as body_iterator (typed on StreamingResponse).
-            async for chunk in stream_resp.body_iterator:
+            # BaseHTTPMiddleware.call_next returns a _StreamingResponse wrapper, but
+            # this branch keeps the contract explicit for static type checkers.
+            if isinstance(response, StreamingResponse):
+                stream_source = response
+            else:
+                self._merge_response_headers(response, miss)
+                return response
+            async for chunk in stream_source.body_iterator:
                 if isinstance(chunk, str):
-                    chunk = chunk.encode(stream_resp.charset)
+                    chunk = chunk.encode(stream_source.charset)
                 elif isinstance(chunk, memoryview):
                     chunk = bytes(chunk)
                 chunks.append(chunk)
