@@ -12,12 +12,11 @@ import json
 import logging
 import time
 from collections.abc import Awaitable, Callable, MutableMapping, Sequence
-from typing import TYPE_CHECKING, override
+from typing import TYPE_CHECKING
 
-from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
-from starlette.responses import JSONResponse, Response, StreamingResponse
-from starlette.types import ASGIApp
+from starlette.responses import JSONResponse, Response
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from ..cache import SemanticCache
 from ..types import CacheResult
@@ -124,7 +123,7 @@ async def default_extract_query(request: Request, body: bytes) -> str | None:
     return None
 
 
-class SemanticCacheMiddleware(BaseHTTPMiddleware):
+class SemanticCacheMiddleware:
     """Intercept requests, serve semantic cache hits, and populate the cache on miss.
 
     Concurrent requests with the same extracted query (and model key) coordinate so
@@ -153,6 +152,7 @@ class SemanticCacheMiddleware(BaseHTTPMiddleware):
     _circuit_lock: asyncio.Lock
     _consecutive_429_count: int
     _circuit_open_until: float | None
+    app: ASGIApp
 
     def __init__(
         self,
@@ -187,7 +187,7 @@ class SemanticCacheMiddleware(BaseHTTPMiddleware):
         """
         from ..config import get_cache_settings
 
-        super().__init__(app)
+        self.app = app
         self._cache = cache
         self._enabled = enabled
         self._path_prefix = path_prefix
@@ -397,20 +397,108 @@ class SemanticCacheMiddleware(BaseHTTPMiddleware):
         for key, value in extra.items():
             response.headers[key] = value
 
-    @override
-    async def dispatch(
+    async def _read_body(self, receive: Receive) -> bytes:
+        """Read and buffer the incoming request body from ASGI ``receive``.
+
+        Args:
+            receive: ASGI receive callable for the current request.
+
+        Returns:
+            Full request body bytes.
+        """
+        chunks: list[bytes] = []
+        while True:
+            message = await receive()
+            msg_type = message["type"]
+            if msg_type == "http.disconnect":
+                break
+            if msg_type != "http.request":
+                continue
+            chunk = message.get("body", b"")
+            if isinstance(chunk, bytes) and chunk:
+                chunks.append(chunk)
+            if not bool(message.get("more_body", False)):
+                break
+        return b"".join(chunks)
+
+    async def _call_downstream(self, scope: Scope, body: bytes) -> Response:
+        """Invoke downstream ASGI app and buffer its response.
+
+        Args:
+            scope: Current request ASGI scope.
+            body: Full buffered request body.
+
+        Returns:
+            Buffered Starlette ``Response`` built from downstream ASGI messages.
+        """
+        status_code = 500
+        response_headers: dict[str, str] = {}
+        response_body: list[bytes] = []
+        body_sent = False
+
+        async def replay_receive() -> Message:
+            nonlocal body_sent
+            if body_sent:
+                return {"type": "http.request", "body": b"", "more_body": False}
+            body_sent = True
+            return {"type": "http.request", "body": body, "more_body": False}
+
+        async def capture_send(message: Message) -> None:
+            nonlocal status_code, response_headers
+            msg_type = message["type"]
+            if msg_type == "http.response.start":
+                status_code = int(message["status"])
+                raw_headers = message.get("headers", [])
+                parsed_headers: dict[str, str] = {}
+                for key, value in raw_headers:
+                    if isinstance(key, bytes) and isinstance(value, bytes):
+                        parsed_headers[key.decode("latin-1")] = value.decode("latin-1")
+                response_headers = parsed_headers
+                return
+            if msg_type == "http.response.body":
+                chunk = message.get("body", b"")
+                if isinstance(chunk, bytes) and chunk:
+                    response_body.append(chunk)
+                return
+
+        await self.app(scope, replay_receive, capture_send)
+        return Response(
+            content=b"".join(response_body),
+            status_code=status_code,
+            headers=response_headers,
+        )
+
+    async def _send_response(
         self,
-        request: Request,
-        call_next: Callable[[Request], Awaitable[Response]],
-    ) -> Response:
+        response: Response,
+        scope: Scope,
+        send: Send,
+    ) -> None:
+        """Emit a Starlette ``Response`` over ASGI ``send``.
+
+        Args:
+            response: Response object to emit.
+            scope: Current request ASGI scope.
+            send: ASGI send callable.
+        """
+
+        async def _unused_receive() -> Message:
+            return {"type": "http.disconnect"}
+
+        await response(scope, _unused_receive, send)
+
+    async def __call__(
+        self,
+        scope: Scope,
+        receive: Receive,
+        send: Send,
+    ) -> None:
         """Run the middleware: lookup, short-circuit on hit, else forward and maybe store.
 
         Args:
-            request: Incoming request.
-            call_next: Next ASGI handler in the stack.
-
-        Returns:
-            Response from cache, or from the downstream app (possibly with MISS headers).
+            scope: Incoming ASGI scope.
+            receive: ASGI receive callable.
+            send: ASGI send callable.
 
         Note:
             If ``cache.get`` raises, the failure is logged and the request continues as
@@ -430,25 +518,38 @@ class SemanticCacheMiddleware(BaseHTTPMiddleware):
             a cooldown window where ``call_next`` is skipped and only cache hits are
             returned; cache misses receive ``503`` with ``X-Cache-Circuit: OPEN``.
         """
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        request = Request(scope, receive=receive)
         if not self._enabled:
-            return await call_next(request)
+            await self.app(scope, receive, send)
+            return
         if request.method not in self._methods:
-            return await call_next(request)
+            await self.app(scope, receive, send)
+            return
         if self._path_prefix is not None and not request.url.path.startswith(
             self._path_prefix
         ):
-            return await call_next(request)
+            await self.app(scope, receive, send)
+            return
+        body = await self._read_body(receive)
+        body_replayed = False
 
-        body = await request.body()
-
-        async def receive() -> dict[str, object]:
+        async def _request_receive() -> Message:
+            nonlocal body_replayed
+            if body_replayed:
+                return {"type": "http.request", "body": b"", "more_body": False}
+            body_replayed = True
             return {"type": "http.request", "body": body, "more_body": False}
 
-        request = Request(request.scope, receive)
+        request = Request(scope, receive=_request_receive)
 
         query = await self._extract_query(request, body)
         if query is None or not str(query).strip():
-            return await call_next(request)
+            passthrough = await self._call_downstream(scope, body)
+            await self._send_response(passthrough, scope, send)
+            return
 
         extract_model = self._extract_model or self._default_extract_model
         model = await extract_model(request, body)
@@ -457,10 +558,15 @@ class SemanticCacheMiddleware(BaseHTTPMiddleware):
             request, query, model, phase="preflight"
         )
         if result.is_hit and result.response is not None:
-            return JSONResponse(
-                content=result.response,
-                headers=self._hit_headers(result),
+            await self._send_response(
+                JSONResponse(
+                    content=result.response,
+                    headers=self._hit_headers(result),
+                ),
+                scope,
+                send,
             )
+            return
 
         flight = await self._get_flight_lock(query, model)
         async with flight:
@@ -469,10 +575,15 @@ class SemanticCacheMiddleware(BaseHTTPMiddleware):
             )
             cache_read_error = cache_read_error or inner_err
             if result.is_hit and result.response is not None:
-                return JSONResponse(
-                    content=result.response,
-                    headers=self._hit_headers(result),
+                await self._send_response(
+                    JSONResponse(
+                        content=result.response,
+                        headers=self._hit_headers(result),
+                    ),
+                    scope,
+                    send,
                 )
+                return
 
             if await self._upstream_blocked_by_circuit():
                 miss = self._miss_headers(cache_read_error=cache_read_error)
@@ -480,41 +591,33 @@ class SemanticCacheMiddleware(BaseHTTPMiddleware):
                     **miss,
                     self._HEADER_CIRCUIT: "OPEN",
                 }
-                return JSONResponse(
-                    status_code=503,
-                    content={
-                        "detail": (
-                            "Upstream is temporarily not contacted after repeated "
-                            "HTTP 429 responses; only cache hits are served until the "
-                            "cooldown elapses."
-                        )
-                    },
-                    headers=circuit_hdrs,
+                await self._send_response(
+                    JSONResponse(
+                        status_code=503,
+                        content={
+                            "detail": (
+                                "Upstream is temporarily not contacted after repeated "
+                                "HTTP 429 responses; only cache hits are served until the "
+                                "cooldown elapses."
+                            )
+                        },
+                        headers=circuit_hdrs,
+                    ),
+                    scope,
+                    send,
                 )
+                return
 
-            response = await call_next(request)
+            response = await self._call_downstream(scope, body)
             await self._record_upstream_status_for_circuit(response.status_code)
             miss = self._miss_headers(cache_read_error=cache_read_error)
 
             if not (200 <= response.status_code < 300):
                 self._merge_response_headers(response, miss)
-                return response
+                await self._send_response(response, scope, send)
+                return
 
-            chunks: list[bytes] = []
-            # BaseHTTPMiddleware.call_next returns a _StreamingResponse wrapper, but
-            # this branch keeps the contract explicit for static type checkers.
-            if isinstance(response, StreamingResponse):
-                stream_source = response
-            else:
-                self._merge_response_headers(response, miss)
-                return response
-            async for chunk in stream_source.body_iterator:
-                if isinstance(chunk, str):
-                    chunk = chunk.encode(stream_source.charset)
-                elif isinstance(chunk, memoryview):
-                    chunk = bytes(chunk)
-                chunks.append(chunk)
-            buffered = b"".join(chunks)
+            buffered = bytes(response.body)
 
             try:
                 payload: object = json.loads(buffered)
@@ -527,7 +630,8 @@ class SemanticCacheMiddleware(BaseHTTPMiddleware):
                     background=response.background,
                 )
                 self._merge_response_headers(out, miss)
-                return out
+                await self._send_response(out, scope, send)
+                return
 
             merged_headers = {**dict(response.headers), **miss}
             final = Response(
@@ -549,4 +653,5 @@ class SemanticCacheMiddleware(BaseHTTPMiddleware):
                         "Semantic cache write failed; returning upstream response unchanged."
                     )
 
-            return final
+            await self._send_response(final, scope, send)
+            return
