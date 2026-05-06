@@ -71,3 +71,18 @@ operation timeout counter (`SemanticCache.timeout_counts`) for observability.
 Middleware continues to fail open, so requests still execute against upstream
 handlers.
 
+## Middleware in-flight lock registry
+
+`SemanticCacheMiddleware` keeps an in-memory lock table to serialize concurrent
+cache misses for the same `(query, model)` key. To prevent unbounded growth in
+long-lived processes with high key cardinality, configure:
+
+- **`SEMANTIC_CACHE_MIDDLEWARE_FLIGHT_LOCK_MAX_ENTRIES`**
+  (`CacheSettings.middleware_flight_lock_max_entries`):
+  maximum number of distinct in-flight lock keys retained. When the limit is
+  exceeded, the middleware evicts least-recently-used **unlocked** lock entries.
+  Locks currently coordinating active requests are never evicted.
+
+Default is `4096`. If all tracked locks are currently held, temporary growth
+above the cap is possible until one becomes idle.
+

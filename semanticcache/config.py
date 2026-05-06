@@ -142,6 +142,14 @@ class CacheSettings(BaseSettings):
             "requests resume."
         ),
     )
+    middleware_flight_lock_max_entries: int = Field(
+        4096,
+        ge=1,
+        description=(
+            "Maximum number of distinct in-flight middleware lock keys retained for "
+            "coordinating concurrent misses. Oldest unlocked entries are evicted."
+        ),
+    )
 
 
 def get_cache_settings() -> CacheSettings:

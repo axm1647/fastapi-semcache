@@ -11,6 +11,7 @@ import asyncio
 import json
 import logging
 import time
+from collections import OrderedDict
 from collections.abc import Awaitable, Callable, MutableMapping, Sequence
 from typing import TYPE_CHECKING
 
@@ -145,7 +146,8 @@ class SemanticCacheMiddleware:
     _extract_model: Callable[[Request, bytes], Awaitable[str | None]] | None
     _model_header_name: str
     _flight_lock_registry: asyncio.Lock
-    _flight_locks: dict[tuple[str, str | None], asyncio.Lock]
+    _flight_locks: OrderedDict[tuple[str, str | None], asyncio.Lock]
+    _flight_lock_max_entries: int
     _circuit_breaker_enabled: bool
     _circuit_breaker_limit: int
     _circuit_breaker_open_seconds: float
@@ -196,16 +198,36 @@ class SemanticCacheMiddleware:
         self._extract_model = extract_model
         self._model_header_name = model_header_name
         self._flight_lock_registry = asyncio.Lock()
-        self._flight_locks = {}
         resolved = (
             cache_settings if cache_settings is not None else get_cache_settings()
         )
+        self._flight_locks = OrderedDict()
+        self._flight_lock_max_entries = max(1, resolved.middleware_flight_lock_max_entries)
         self._circuit_breaker_enabled = resolved.circuit_breaker_429_enabled
         self._circuit_breaker_limit = resolved.circuit_breaker_429_consecutive_limit
         self._circuit_breaker_open_seconds = resolved.circuit_breaker_429_open_seconds
         self._circuit_lock = asyncio.Lock()
         self._consecutive_429_count = 0
         self._circuit_open_until = None
+
+    def _evict_unused_flight_locks(self) -> None:
+        """Evict least-recently-used unlocked flight locks when over capacity.
+
+        This method expects ``self._flight_lock_registry`` to already be held.
+        Locked entries are preserved so active in-flight request coordination is
+        never broken. If every entry is currently locked, the registry can
+        temporarily remain above the configured cap until one becomes idle.
+        """
+        while len(self._flight_locks) > self._flight_lock_max_entries:
+            removed_any = False
+            for key, lock in list(self._flight_locks.items()):
+                if lock.locked():
+                    continue
+                self._flight_locks.pop(key, None)
+                removed_any = True
+                break
+            if not removed_any:
+                return
 
     async def _get_flight_lock(self, query: str, model: str | None) -> asyncio.Lock:
         """Return the async lock that serializes miss handling for one cache key.
@@ -220,9 +242,12 @@ class SemanticCacheMiddleware:
         key = (query, model)
         async with self._flight_lock_registry:
             lock = self._flight_locks.get(key)
-            if lock is None:
-                lock = asyncio.Lock()
-                self._flight_locks[key] = lock
+            if lock is not None:
+                self._flight_locks.move_to_end(key)
+                return lock
+            lock = asyncio.Lock()
+            self._flight_locks[key] = lock
+            self._evict_unused_flight_locks()
             return lock
 
     async def _upstream_blocked_by_circuit(self) -> bool:
