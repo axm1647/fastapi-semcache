@@ -118,6 +118,11 @@ Other advanced options (`path_prefix`, HTTP 429 circuit breaker via `cache_setti
 
 - A **primary similarity threshold** (`SEMANTIC_CACHE_THRESHOLD`) and **top-k candidate limit** (`SEMANTIC_CACHE_TOP_K_CANDIDATES`) control which nearest neighbors are fetched from pgvector.
 - An optional **rejection threshold** (`SEMANTIC_CACHE_REJECTION_THRESHOLD`) can then filter out borderline matches; if no candidate passes this second stage, the middleware returns a cache miss.
+- **Dependency timeouts** let you fail fast when providers or storage are slow:
+  `SEMANTIC_CACHE_EMBED_TIMEOUT_SECONDS` applies to embedder calls, and
+  `SEMANTIC_CACHE_STORE_TIMEOUT_SECONDS` applies to Postgres/Redis operations.
+  On timeout, `SemanticCache` raises a timeout error, middleware logs it, and
+  request handling continues in fail-open mode.
 
 See `docs/cache-tuning.md` for concrete tuning tips and examples.
 

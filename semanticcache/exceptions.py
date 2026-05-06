@@ -15,3 +15,26 @@ class EmbeddingDimensionUnavailableException(EmbeddingDimensionException):
 
 class InvalidEmbeddingDimensionException(EmbeddingDimensionException):
     """Raised when an embedder reports an invalid embedding dimension."""
+
+
+class CacheTimeoutError(TimeoutError):
+    """Raised when a cache dependency call exceeds the configured timeout."""
+
+    def __init__(
+        self,
+        *,
+        operation: str,
+        timeout_seconds: float,
+    ) -> None:
+        """Initialize timeout metadata for logs and callers.
+
+        Args:
+            operation: Human-readable operation label (embed, db, redis).
+            timeout_seconds: Applied timeout in seconds.
+        """
+        super().__init__(
+            f"semantic cache operation timed out: {operation} after "
+            f"{timeout_seconds:.3f}s"
+        )
+        self.operation = operation
+        self.timeout_seconds = timeout_seconds

@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import override
 from unittest.mock import AsyncMock
 
@@ -13,6 +14,7 @@ import pytest
 
 from semanticcache.cache import SemanticCache
 from semanticcache.config import CacheSettings
+from semanticcache.exceptions import CacheTimeoutError
 from semanticcache.embedders import BaseEmbedder
 from semanticcache.types import CacheEntry, CacheResult
 
@@ -48,6 +50,15 @@ class _EmptyEmbedder(_FixedEmbedder):
     async def embed(self, texts: list[str]) -> list[list[float]]:
         _ = texts
         return []
+
+
+class _SlowEmbedder(_FixedEmbedder):
+    """Sleep before returning vectors to simulate a slow provider."""
+
+    @override
+    async def embed(self, texts: list[str]) -> list[list[float]]:
+        await asyncio.sleep(0.05)
+        return await super().embed(texts)
 
 
 def test_embedding_dim_mismatch_raises() -> None:
@@ -277,3 +288,52 @@ async def test_get_empty_embed_returns_miss() -> None:
         is_hit=False, similarity=None, source="embedders.sbert", response=None
     )
     mock_vs.similarity_search_top_k.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_get_raises_timeout_when_embedder_is_slow() -> None:
+    """Embedder slowness raises a uniform timeout exception."""
+    settings = CacheSettings(
+        redis_uri=" ",
+        pg_uri="postgresql://mock/mock",
+        embed_timeout_seconds=0.01,
+        store_timeout_seconds=1.0,
+    )
+    cache = _make_cache(_SlowEmbedder(), settings=settings)
+
+    mock_vs = AsyncMock()
+    mock_vs.open = AsyncMock()
+    mock_vs.ensure_schema = AsyncMock()
+    cache._vector_store = mock_vs
+
+    with pytest.raises(CacheTimeoutError, match="embed_get"):
+        await cache.get("too slow")
+    assert cache.timeout_counts.get("embed_get") == 1
+    mock_vs.similarity_search_top_k.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_put_raises_timeout_when_store_is_slow() -> None:
+    """Store slowness raises a uniform timeout exception."""
+    settings = CacheSettings(
+        redis_uri=" ",
+        pg_uri="postgresql://mock/mock",
+        embed_timeout_seconds=1.0,
+        store_timeout_seconds=0.01,
+    )
+    cache = _make_cache(_FixedEmbedder(), settings=settings)
+    mock_vs = AsyncMock()
+    mock_vs.open = AsyncMock()
+    mock_vs.ensure_schema = AsyncMock()
+
+    async def _slow_upsert(*args: object, **kwargs: object) -> int:
+        _ = args, kwargs
+        await asyncio.sleep(0.05)
+        return 1
+
+    mock_vs.upsert = AsyncMock(side_effect=_slow_upsert)
+    cache._vector_store = mock_vs
+
+    with pytest.raises(CacheTimeoutError, match="db_upsert"):
+        await cache.put("abc", {"ok": True})
+    assert cache.timeout_counts.get("db_upsert") == 1
