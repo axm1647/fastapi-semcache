@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "fastapi-semcache"
-version = "0.2.10"
+version = "0.2.11"
 description = "Drop in FastAPI middleware/reverse proxy with semantic caching for APIs & LLMs"
 readme = "README.md"
 requires-python = ">=3.12"
