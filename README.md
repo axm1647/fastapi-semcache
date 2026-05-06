@@ -123,6 +123,10 @@ Other advanced options (`path_prefix`, HTTP 429 circuit breaker via `cache_setti
   `SEMANTIC_CACHE_STORE_TIMEOUT_SECONDS` applies to Postgres/Redis operations.
   On timeout, `SemanticCache` raises a timeout error, middleware logs it, and
   request handling continues in fail-open mode.
+- **In-flight lock registry cap** bounds middleware memory used for concurrent
+  miss coordination: `SEMANTIC_CACHE_MIDDLEWARE_FLIGHT_LOCK_MAX_ENTRIES`
+  limits retained `(query, model)` lock keys and evicts least-recently-used
+  unlocked entries when needed.
 
 See `docs/cache-tuning.md` for concrete tuning tips and examples.
 
