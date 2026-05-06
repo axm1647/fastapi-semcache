@@ -228,9 +228,7 @@ class AsyncPgVectorStore:
                     if sim < threshold:
                         continue
                     if not isinstance(resp, dict):
-                        msg = (
-                            "cache response column must deserialize to a JSON object"
-                        )
+                        msg = "cache response column must deserialize to a JSON object"
                         raise TypeError(msg)
                     entries.append(
                         CacheEntry(
