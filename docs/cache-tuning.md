@@ -52,3 +52,22 @@ This is useful when you want to:
 - If `SEMANTIC_CACHE_TOP_K_CANDIDATES` is less than `1`, it is treated as `1` internally.
 - All thresholds are clamped to the inclusive range \[0.0, 1.0] by `CacheSettings`.
 
+## Timeout tuning
+
+Slow embedder providers or storage dependencies can increase request latency and
+tie up worker capacity. `SemanticCache` supports fail-fast timeout controls:
+
+- **`SEMANTIC_CACHE_EMBED_TIMEOUT_SECONDS`**
+  (`CacheSettings.embed_timeout_seconds`):
+  timeout budget for embedder calls used by `get()` and `put()`.
+- **`SEMANTIC_CACHE_STORE_TIMEOUT_SECONDS`**
+  (`CacheSettings.store_timeout_seconds`):
+  timeout budget for Postgres and Redis operations, including initial pool open
+  and schema checks.
+
+When these timeouts are exceeded, the cache raises a timeout exception with
+operation metadata, emits a warning log entry, and increments an in-process
+operation timeout counter (`SemanticCache.timeout_counts`) for observability.
+Middleware continues to fail open, so requests still execute against upstream
+handlers.
+

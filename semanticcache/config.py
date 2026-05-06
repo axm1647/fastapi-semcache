@@ -62,6 +62,21 @@ class CacheSettings(BaseSettings):
 
     pg_pool_size: int = 10
     pg_pool_max_overflow: int = 20
+    embed_timeout_seconds: float | None = Field(
+        default=10.0,
+        gt=0.0,
+        description=(
+            "Timeout budget for embedder calls in seconds. Set to null/empty to disable."
+        ),
+    )
+    store_timeout_seconds: float | None = Field(
+        default=5.0,
+        gt=0.0,
+        description=(
+            "Timeout budget for Postgres/Redis operations in seconds. "
+            "Set to null/empty to disable."
+        ),
+    )
 
     embedder_type: Literal["huggingface", "openai", "cohere", "voyage", "ollama"] = (
         "huggingface"
