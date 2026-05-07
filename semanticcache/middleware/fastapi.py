@@ -628,6 +628,250 @@ class SemanticCacheMiddleware:
 
         await response(scope, _unused_receive, send)
 
+    async def _send_passthrough(self, scope: Scope, body: bytes, send: Send) -> None:
+        """Call downstream and emit the response unchanged.
+
+        Args:
+            scope: Current request ASGI scope.
+            body: Buffered request body.
+            send: ASGI send callable.
+        """
+        passthrough = await self._call_downstream(scope, body)
+        await self._send_response(passthrough, scope, send)
+
+    async def _extract_lookup_context_or_passthrough(
+        self,
+        *,
+        request: Request,
+        scope: Scope,
+        body: bytes,
+        send: Send,
+    ) -> tuple[str, str | None, str | None, str] | None:
+        """Extract cache lookup inputs, or emit pass-through when unavailable.
+
+        Args:
+            request: Current Starlette request.
+            scope: Current request ASGI scope.
+            body: Buffered request body.
+            send: ASGI send callable.
+
+        Returns:
+            Tuple of `(query, model, raw_scope, storage_scope_key)` when cache lookup
+            can proceed. Returns None after sending pass-through otherwise.
+        """
+        try:
+            semantic_query = await self._extract_query(request, body)
+        except Exception as exc:
+            self._log_extraction_failure(request, phase="extract_query", exc=exc)
+            await self._send_passthrough(scope, body, send)
+            return None
+
+        if semantic_query is None or not str(semantic_query).strip():
+            await self._send_passthrough(scope, body, send)
+            return None
+
+        extract_model = self._extract_model or self._default_extract_model
+        try:
+            model = await extract_model(request, body)
+        except Exception as exc:
+            self._log_extraction_failure(request, phase="extract_model", exc=exc)
+            await self._send_passthrough(scope, body, send)
+            return None
+
+        normalized_path = _normalize_request_path(request.url.path)
+        query = _compose_cache_lookup_query(
+            method=request.method.upper(),
+            normalized_path=normalized_path,
+            model=model,
+            semantic_query=semantic_query,
+        )
+
+        raw_scope: str | None = None
+        if self._require_cache_scope:
+            scope_extractor = self._extract_scope or self._default_extract_scope
+            try:
+                raw_scope = await scope_extractor(request, body)
+            except Exception as exc:
+                self._log_extraction_failure(request, phase="extract_scope", exc=exc)
+                await self._send_passthrough(scope, body, send)
+                return None
+        elif self._extract_scope is not None:
+            try:
+                raw_scope = await self._extract_scope(request, body)
+            except Exception as exc:
+                self._log_extraction_failure(request, phase="extract_scope", exc=exc)
+                await self._send_passthrough(scope, body, send)
+                return None
+
+        scope_storage = resolve_cache_scope(raw_scope, settings=self._scope_settings)
+        if scope_storage is None:
+            await self._send_passthrough(scope, body, send)
+            return None
+        return (query, model, raw_scope, scope_storage)
+
+    async def _send_cache_hit_if_available(
+        self,
+        *,
+        result: CacheResult,
+        scope: Scope,
+        send: Send,
+    ) -> bool:
+        """Send cached response when replayable.
+
+        Args:
+            result: Cache lookup result.
+            scope: Current request ASGI scope.
+            send: ASGI send callable.
+
+        Returns:
+            True when a cached response was sent.
+        """
+        if not result.is_hit:
+            return False
+        cached_response = self._response_from_cache_hit(result=result)
+        if cached_response is None:
+            return False
+        await self._send_response(cached_response, scope, send)
+        return True
+
+    async def _send_circuit_open_response(
+        self,
+        *,
+        scope: Scope,
+        send: Send,
+        cache_read_error: bool,
+    ) -> None:
+        """Send 503 response when the 429 circuit breaker is open.
+
+        Args:
+            scope: Current request ASGI scope.
+            send: ASGI send callable.
+            cache_read_error: Whether to include cache read error response header.
+        """
+        miss = self._miss_headers(cache_read_error=cache_read_error)
+        circuit_headers = {
+            **miss,
+            self._HEADER_CIRCUIT: "OPEN",
+        }
+        await self._send_response(
+            JSONResponse(
+                status_code=503,
+                content={
+                    "detail": (
+                        "Upstream is temporarily not contacted after repeated "
+                        "HTTP 429 responses; only cache hits are served until the "
+                        "cooldown elapses."
+                    )
+                },
+                headers=circuit_headers,
+            ),
+            scope,
+            send,
+        )
+
+    def _prepare_response_for_client(
+        self,
+        *,
+        response: Response,
+        miss_headers: Mapping[str, str],
+    ) -> tuple[Response, dict[str, object] | None]:
+        """Build final client response and optional cache payload.
+
+        Args:
+            response: Downstream response.
+            miss_headers: Headers that mark cache miss metadata.
+
+        Returns:
+            Tuple `(final_response, payload_for_cache_or_none)`.
+        """
+        if not (200 <= response.status_code < 300):
+            self._merge_response_headers(response, miss_headers)
+            return (response, None)
+
+        buffered = bytes(response.body)
+        try:
+            payload: object = json.loads(buffered)
+        except json.JSONDecodeError:
+            out = Response(
+                content=buffered,
+                status_code=response.status_code,
+                headers=dict(response.headers),
+                media_type=response.media_type,
+                background=response.background,
+            )
+            self._merge_response_headers(out, miss_headers)
+            return (out, None)
+
+        final = Response(
+            content=buffered,
+            status_code=response.status_code,
+            headers={**dict(response.headers), **miss_headers},
+            media_type=response.media_type,
+            background=response.background,
+        )
+        if isinstance(payload, dict):
+            return (final, payload)
+        return (final, None)
+
+    async def _maybe_store_cache_entry(
+        self,
+        *,
+        request: Request,
+        body: bytes,
+        response: Response,
+        payload: dict[str, object] | None,
+        query: str,
+        model: str | None,
+        raw_scope: str | None,
+        scope_storage: str,
+    ) -> None:
+        """Store cache entry when response and payload pass cacheability checks.
+
+        Args:
+            request: Current Starlette request.
+            body: Buffered request body.
+            response: Upstream response used for cache policy checks.
+            payload: Parsed JSON dictionary payload, when available.
+            query: Cache lookup query text.
+            model: Optional model discriminator.
+            raw_scope: Optional extracted scope value for validation context.
+            scope_storage: Resolved storage scope key for cache writes.
+        """
+        if payload is None:
+            return
+        # Persist JSON objects on success. Do not require a JSON Content-Type: many
+        # servers omit the header or use nonstandard values; the old check for the
+        # substring application/json skipped put() entirely.
+        if not self._response_allows_cache_store(response):
+            return
+        is_valid = await self._response_shape_allows_cache_store(
+            ResponseValidationContext(
+                request=request,
+                request_body=body,
+                response=response,
+                payload=payload,
+                model=model,
+                scope=raw_scope,
+            )
+        )
+        if not is_valid:
+            return
+        try:
+            cache_record = self._cache_record_from_response(
+                payload=payload,
+                response=response,
+            )
+            await self._cache.put(
+                query,
+                cache_record,
+                model=model,
+                storage_scope_key=scope_storage,
+            )
+        except Exception:
+            _logger.exception(
+                "Semantic cache write failed; returning upstream response unchanged."
+            )
+
     async def __call__(
         self,
         scope: Scope,
@@ -696,59 +940,15 @@ class SemanticCacheMiddleware:
 
         request = Request(scope, receive=_request_receive)
 
-        try:
-            semantic_query = await self._extract_query(request, body)
-        except Exception as exc:
-            self._log_extraction_failure(request, phase="extract_query", exc=exc)
-            passthrough = await self._call_downstream(scope, body)
-            await self._send_response(passthrough, scope, send)
-            return
-
-        if semantic_query is None or not str(semantic_query).strip():
-            passthrough = await self._call_downstream(scope, body)
-            await self._send_response(passthrough, scope, send)
-            return
-
-        extract_model = self._extract_model or self._default_extract_model
-        try:
-            model = await extract_model(request, body)
-        except Exception as exc:
-            self._log_extraction_failure(request, phase="extract_model", exc=exc)
-            passthrough = await self._call_downstream(scope, body)
-            await self._send_response(passthrough, scope, send)
-            return
-        normalized_path = _normalize_request_path(request.url.path)
-        query = _compose_cache_lookup_query(
-            method=request.method.upper(),
-            normalized_path=normalized_path,
-            model=model,
-            semantic_query=semantic_query,
+        lookup_context = await self._extract_lookup_context_or_passthrough(
+            request=request,
+            scope=scope,
+            body=body,
+            send=send,
         )
-
-        raw_scope: str | None = None
-        if self._require_cache_scope:
-            scope_extractor = self._extract_scope or self._default_extract_scope
-            try:
-                raw_scope = await scope_extractor(request, body)
-            except Exception as exc:
-                self._log_extraction_failure(request, phase="extract_scope", exc=exc)
-                passthrough = await self._call_downstream(scope, body)
-                await self._send_response(passthrough, scope, send)
-                return
-        elif self._extract_scope is not None:
-            try:
-                raw_scope = await self._extract_scope(request, body)
-            except Exception as exc:
-                self._log_extraction_failure(request, phase="extract_scope", exc=exc)
-                passthrough = await self._call_downstream(scope, body)
-                await self._send_response(passthrough, scope, send)
-                return
-
-        scope_storage = resolve_cache_scope(raw_scope, settings=self._scope_settings)
-        if scope_storage is None:
-            passthrough = await self._call_downstream(scope, body)
-            await self._send_response(passthrough, scope, send)
+        if lookup_context is None:
             return
+        query, model, raw_scope, scope_storage = lookup_context
 
         result, cache_read_error = await self._cache_get_fail_open(
             request,
@@ -758,15 +958,8 @@ class SemanticCacheMiddleware:
             storage_scope_key=scope_storage,
             phase="preflight",
         )
-        if result.is_hit:
-            cached_response = self._response_from_cache_hit(result=result)
-            if cached_response is not None:
-                await self._send_response(
-                    cached_response,
-                    scope,
-                    send,
-                )
-                return
+        if await self._send_cache_hit_if_available(result=result, scope=scope, send=send):
+            return
 
         flight = await self._coordination.get_flight_lock(query, model, scope_storage)
         async with flight:
@@ -779,36 +972,18 @@ class SemanticCacheMiddleware:
                 phase="double_check",
             )
             cache_read_error = cache_read_error or inner_err
-            if result.is_hit:
-                cached_response = self._response_from_cache_hit(result=result)
-                if cached_response is not None:
-                    await self._send_response(
-                        cached_response,
-                        scope,
-                        send,
-                    )
-                    return
+            if await self._send_cache_hit_if_available(
+                result=result,
+                scope=scope,
+                send=send,
+            ):
+                return
 
             if await self._coordination.upstream_blocked_by_circuit():
-                miss = self._miss_headers(cache_read_error=cache_read_error)
-                circuit_hdrs = {
-                    **miss,
-                    self._HEADER_CIRCUIT: "OPEN",
-                }
-                await self._send_response(
-                    JSONResponse(
-                        status_code=503,
-                        content={
-                            "detail": (
-                                "Upstream is temporarily not contacted after repeated "
-                                "HTTP 429 responses; only cache hits are served until the "
-                                "cooldown elapses."
-                            )
-                        },
-                        headers=circuit_hdrs,
-                    ),
-                    scope,
-                    send,
+                await self._send_circuit_open_response(
+                    scope=scope,
+                    send=send,
+                    cache_read_error=cache_read_error,
                 )
                 return
 
@@ -817,69 +992,21 @@ class SemanticCacheMiddleware:
                 response.status_code
             )
             miss = self._miss_headers(cache_read_error=cache_read_error)
-
-            if not (200 <= response.status_code < 300):
-                self._merge_response_headers(response, miss)
-                await self._send_response(response, scope, send)
-                return
-
-            buffered = bytes(response.body)
-
-            try:
-                payload: object = json.loads(buffered)
-            except json.JSONDecodeError:
-                out = Response(
-                    content=buffered,
-                    status_code=response.status_code,
-                    headers=dict(response.headers),
-                    media_type=response.media_type,
-                    background=response.background,
-                )
-                self._merge_response_headers(out, miss)
-                await self._send_response(out, scope, send)
-                return
-
-            merged_headers = {**dict(response.headers), **miss}
-            final = Response(
-                content=buffered,
-                status_code=response.status_code,
-                headers=merged_headers,
-                media_type=response.media_type,
-                background=response.background,
+            final, payload = self._prepare_response_for_client(
+                response=response,
+                miss_headers=miss,
             )
 
-            # Persist JSON objects on success. Do not require a JSON Content-Type: many
-            # servers omit the header or use nonstandard values; the old check for the
-            # substring application/json skipped put() entirely.
-            if (
-                isinstance(payload, dict)
-                and self._response_allows_cache_store(response)
-                and await self._response_shape_allows_cache_store(
-                    ResponseValidationContext(
-                        request=request,
-                        request_body=body,
-                        response=response,
-                        payload=payload,
-                        model=model,
-                        scope=raw_scope,
-                    )
-                )
-            ):
-                try:
-                    cache_record = self._cache_record_from_response(
-                        payload=payload,
-                        response=response,
-                    )
-                    await self._cache.put(
-                        query,
-                        cache_record,
-                        model=model,
-                        storage_scope_key=scope_storage,
-                    )
-                except Exception:
-                    _logger.exception(
-                        "Semantic cache write failed; returning upstream response unchanged."
-                    )
+            await self._maybe_store_cache_entry(
+                request=request,
+                body=body,
+                response=response,
+                payload=payload,
+                query=query,
+                model=model,
+                raw_scope=raw_scope,
+                scope_storage=scope_storage,
+            )
 
             await self._send_response(final, scope, send)
             return
