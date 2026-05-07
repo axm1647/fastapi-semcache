@@ -150,6 +150,14 @@ class CacheSettings(BaseSettings):
             "coordinating concurrent misses. Oldest unlocked entries are evicted."
         ),
     )
+    require_cache_scope: bool = Field(
+        True,
+        description=(
+            "When True, ``SemanticCache`` and middleware require a non-empty tenant "
+            "or namespace scope for lookups and writes (see ``resolve_cache_scope``). "
+            "Set False only for single-tenant deployments or dedicated cache storage."
+        ),
+    )
 
 
 def get_cache_settings() -> CacheSettings:

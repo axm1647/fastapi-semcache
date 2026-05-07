@@ -37,19 +37,72 @@ def _normalize_model_key(model: str | None) -> str:
     return model.strip()
 
 
-def _redis_model_segment(model_key: str) -> str:
-    """Return a short stable Redis key segment for ``model_key``.
+def _redis_bucket_segment(raw_key: str) -> str:
+    """Return a short stable Redis key segment for a scope or model bucket string.
 
     Args:
-        model_key: Normalized model key from ``_normalize_model_key``.
+        raw_key: Normalized ``scope_key`` or ``model_key`` (possibly empty).
 
     Returns:
         The literal ``default`` for the empty bucket, else the first 16 hex chars of
         the SHA-256 digest of the UTF-8 key (collision-safe for cache routing).
     """
-    if not model_key:
+    if not raw_key:
         return "default"
-    return hashlib.sha256(model_key.encode("utf-8")).hexdigest()[:16]
+    return hashlib.sha256(raw_key.encode("utf-8")).hexdigest()[:16]
+
+
+def _resolve_scope_key_for_storage(
+    *,
+    scope: str | None,
+    storage_scope_key: str | None,
+    settings: "CacheSettings",
+) -> str | None:
+    """Produce ``scope_key`` for Postgres and Redis from raw or pre-resolved input.
+
+    When ``storage_scope_key`` is set (typically by ``SemanticCacheMiddleware`` after a
+    single ``resolve_cache_scope`` call), it is used directly after trimming so callers
+    avoid resolving twice. When unset, ``scope`` is passed through ``resolve_cache_scope``.
+
+    Args:
+        scope: Raw tenant or namespace string from the caller or extractor.
+        storage_scope_key: Optional key already normalized per ``resolve_cache_scope``;
+            takes precedence over ``scope`` when not ``None``.
+        settings: Active cache settings.
+
+    Returns:
+        Storage scope string, or ``None`` when the cache must not read or write.
+    """
+    if storage_scope_key is not None:
+        trimmed = storage_scope_key.strip()
+        if settings.require_cache_scope:
+            return trimmed if trimmed else None
+        return trimmed
+    return resolve_cache_scope(scope, settings=settings)
+
+
+def resolve_cache_scope(raw: str | None, *, settings: "CacheSettings") -> str | None:
+    """Resolve caller-provided scope into storage form or signal cache bypass.
+
+    When ``settings.require_cache_scope`` is True, empty or missing scope means the
+    caller must not read or write the shared cache (prevents cross-tenant hits).
+
+    Args:
+        raw: Tenant or namespace string, or ``None`` when the caller did not supply
+            one.
+        settings: Active cache settings (``require_cache_scope`` governs behavior).
+
+    Returns:
+        Normalized non-empty scope string for Postgres and Redis, ``""`` when
+        ``require_cache_scope`` is False and scope is optional (legacy single-tenant
+        bucket), or ``None`` when cache operations must be skipped entirely.
+    """
+    stripped = "" if raw is None else raw.strip()
+    if settings.require_cache_scope:
+        if not stripped:
+            return None
+        return stripped
+    return stripped
 
 
 def _embed_source(
@@ -163,6 +216,11 @@ class SemanticCache:
         self._timeout_counts = Counter()
 
     @property
+    def settings(self) -> "CacheSettings":
+        """Return the cache settings used by this instance."""
+        return self._settings
+
+    @property
     def timeout_counts(self) -> dict[str, int]:
         """Return observed timeout counts by operation label."""
         return dict(self._timeout_counts)
@@ -221,24 +279,46 @@ class SemanticCache:
             )
             self._pg_open = True
 
-    async def get(self, query: str, model: str | None = None) -> CacheResult:
+    async def get(
+        self,
+        query: str,
+        model: str | None = None,
+        *,
+        scope: str | None = None,
+        storage_scope_key: str | None = None,
+    ) -> CacheResult:
         """Embed the query, search vectors, then optionally resolve Redis by row id.
 
         On a vector hit, the response body prefers Redis (keyed by embedder namespace,
-        model bucket, and row id) when present; otherwise the JSON from Postgres is
-        returned.
+        scope bucket, model bucket, and row id) when present; otherwise the JSON from
+        Postgres is returned.
 
         Args:
             query: Text to embed and match semantically.
             model: Logical model id for scoped lookup (same value as ``put``); ``None``
                 or whitespace-only values use the default bucket (``model_key=""``).
+            scope: Tenant or namespace id for isolation; must match ``put`` when
+                ``require_cache_scope`` is True. When resolution yields no scope in that
+                mode, this method returns a miss without embedding. Ignored when
+                ``storage_scope_key`` is not ``None``.
+            storage_scope_key: Optional key already produced by ``resolve_cache_scope``
+                for this request; middleware passes this to avoid resolving twice. Call
+                sites that set this should treat it as internal coordination with the
+                same ``SemanticCache.settings`` used here.
 
         Returns:
             ``CacheResult`` with ``is_hit`` False on vector miss, else True with
             similarity and response payload.
         """
         model_key = _normalize_model_key(model)
+        scope_key = _resolve_scope_key_for_storage(
+            scope=scope,
+            storage_scope_key=storage_scope_key,
+            settings=self._settings,
+        )
         src = _embed_source(self._settings)
+        if scope_key is None:
+            return CacheResult(is_hit=False, similarity=None, source=src, response=None)
         await self._ensure_open()
         vectors = await self._with_timeout(
             operation="embed_get",
@@ -258,6 +338,7 @@ class SemanticCache:
                 threshold=self.threshold,
                 limit=top_k,
                 model_key=model_key,
+                scope_key=scope_key,
             ),
         )
         if not entries:
@@ -282,8 +363,8 @@ class SemanticCache:
         response: dict[str, object] = chosen_entry.response
         if self._redis_store is not None:
             redis_key = (
-                f"{self._redis_key_prefix}:{_redis_model_segment(model_key)}:"
-                f"{chosen_entry.id}"
+                f"{self._redis_key_prefix}:{_redis_bucket_segment(scope_key)}:"
+                f"{_redis_bucket_segment(model_key)}:{chosen_entry.id}"
             )
             from_redis = await self._with_timeout(
                 operation="redis_get",
@@ -300,20 +381,38 @@ class SemanticCache:
         )
 
     async def put(
-        self, query: str, response: dict[str, object], model: str | None = None
+        self,
+        query: str,
+        response: dict[str, object],
+        model: str | None = None,
+        *,
+        scope: str | None = None,
+        storage_scope_key: str | None = None,
     ) -> None:
         """Embed and persist the response in Postgres and optionally Redis.
 
-        Redis stores the same payload under a key scoped to this embedder, model
-        bucket, and ``row_id``, with configured TTL.
+        Redis stores the same payload under a key scoped to this embedder, scope and
+        model buckets, and ``row_id``, with configured TTL.
 
         Args:
             query: Query text stored alongside the embedding in the pgvector table.
             response: JSON-serializable payload (mirrored in Redis when enabled).
             model: Logical model id for scoped storage (must match ``get``); ``None``
                 or whitespace-only values use the default bucket.
+            scope: Tenant or namespace id (must match ``get``) when
+                ``require_cache_scope`` is True; otherwise optional. Ignored when
+                ``storage_scope_key`` is not ``None``.
+            storage_scope_key: Optional key from ``resolve_cache_scope`` for this
+                request; same semantics as ``get``.
         """
         model_key = _normalize_model_key(model)
+        scope_key = _resolve_scope_key_for_storage(
+            scope=scope,
+            storage_scope_key=storage_scope_key,
+            settings=self._settings,
+        )
+        if scope_key is None:
+            return
         await self._ensure_open()
         vectors = await self._with_timeout(
             operation="embed_put",
@@ -328,12 +427,17 @@ class SemanticCache:
             operation="db_upsert",
             timeout_seconds=self._store_timeout_seconds,
             work=self._vector_store.upsert(
-                query, embedding, response, model_key=model_key
+                query,
+                embedding,
+                response,
+                model_key=model_key,
+                scope_key=scope_key,
             ),
         )
         if self._redis_store is not None:
             redis_key = (
-                f"{self._redis_key_prefix}:{_redis_model_segment(model_key)}:{row_id}"
+                f"{self._redis_key_prefix}:{_redis_bucket_segment(scope_key)}:"
+                f"{_redis_bucket_segment(model_key)}:{row_id}"
             )
             await self._with_timeout(
                 operation="redis_put",

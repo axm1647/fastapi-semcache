@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from semanticcache.cache import SemanticCache
+from semanticcache.cache import SemanticCache, resolve_cache_scope
 from semanticcache.config import CacheSettings
 from semanticcache.exceptions import CacheTimeoutError
 from semanticcache.embedders import BaseEmbedder
@@ -70,7 +70,7 @@ def test_embedding_dim_mismatch_raises() -> None:
             embedding_dim=4,
             pg_uri="postgresql://mock/mock",
             redis_uri="",
-            settings=CacheSettings(),
+            settings=CacheSettings(require_cache_scope=False),
         )
 
 
@@ -81,7 +81,11 @@ def _make_cache(
     s = (
         settings
         if settings is not None
-        else CacheSettings(redis_uri=" ", pg_uri="postgresql://mock/mock")
+        else CacheSettings(
+            redis_uri=" ",
+            pg_uri="postgresql://mock/mock",
+            require_cache_scope=False,
+        )
     )
     return SemanticCache(
         embedder=embedder,
@@ -136,6 +140,7 @@ async def test_get_hit_prefers_redis_when_enabled() -> None:
     settings = CacheSettings(
         redis_uri="redis://localhost:6379/0",
         pg_uri="postgresql://mock/mock",
+        require_cache_scope=False,
     )
     cache = _make_cache(_FixedEmbedder(), settings=settings)
 
@@ -160,7 +165,7 @@ async def test_get_hit_prefers_redis_when_enabled() -> None:
     assert result.response == {"from": "redis"}
     mock_redis.get.assert_awaited_once()
     redis_key = mock_redis.get.await_args[0][0]
-    assert redis_key.endswith(":default:7")
+    assert redis_key.endswith(":default:default:7")
 
 
 @pytest.mark.asyncio
@@ -172,6 +177,7 @@ async def test_get_rejection_threshold_filters_out_borderline_candidates() -> No
         threshold=0.80,
         top_k_candidates=3,
         rejection_threshold=0.90,
+        require_cache_scope=False,
     )
     cache = _make_cache(_FixedEmbedder(), settings=settings)
 
@@ -214,6 +220,7 @@ async def test_get_rejection_threshold_accepts_strong_candidate() -> None:
         threshold=0.80,
         top_k_candidates=3,
         rejection_threshold=0.90,
+        require_cache_scope=False,
     )
     cache = _make_cache(_FixedEmbedder(), settings=settings)
 
@@ -301,6 +308,7 @@ async def test_get_raises_timeout_when_embedder_is_slow() -> None:
         pg_uri="postgresql://mock/mock",
         embed_timeout_seconds=0.01,
         store_timeout_seconds=1.0,
+        require_cache_scope=False,
     )
     cache = _make_cache(_SlowEmbedder(), settings=settings)
 
@@ -321,6 +329,7 @@ async def test_get_put_scope_by_model_key() -> None:
     settings = CacheSettings(
         redis_uri="redis://localhost:6379/0",
         pg_uri="postgresql://mock/mock",
+        require_cache_scope=False,
     )
     cache = _make_cache(_FixedEmbedder(), settings=settings)
 
@@ -345,7 +354,9 @@ async def test_get_put_scope_by_model_key() -> None:
     await cache.put("hello", {"x": 1}, model="claude-3")
 
     assert mock_vs.similarity_search_top_k.await_args.kwargs["model_key"] == "gpt-4"
+    assert mock_vs.similarity_search_top_k.await_args.kwargs["scope_key"] == ""
     assert mock_vs.upsert.await_args.kwargs["model_key"] == "claude-3"
+    assert mock_vs.upsert.await_args.kwargs["scope_key"] == ""
 
 
 @pytest.mark.asyncio
@@ -372,6 +383,7 @@ async def test_put_raises_timeout_when_store_is_slow() -> None:
         pg_uri="postgresql://mock/mock",
         embed_timeout_seconds=1.0,
         store_timeout_seconds=0.01,
+        require_cache_scope=False,
     )
     cache = _make_cache(_FixedEmbedder(), settings=settings)
     mock_vs = AsyncMock()
@@ -389,3 +401,125 @@ async def test_put_raises_timeout_when_store_is_slow() -> None:
     with pytest.raises(CacheTimeoutError, match="db_upsert"):
         await cache.put("abc", {"ok": True})
     assert cache.timeout_counts.get("db_upsert") == 1
+
+
+def test_resolve_cache_scope_required_rejects_empty() -> None:
+    """When scope is mandatory, missing or blank values resolve to cache bypass."""
+    settings = CacheSettings(require_cache_scope=True)
+    assert resolve_cache_scope(None, settings=settings) is None
+    assert resolve_cache_scope("", settings=settings) is None
+    assert resolve_cache_scope("   ", settings=settings) is None
+
+
+def test_resolve_cache_scope_required_accepts_value() -> None:
+    """Required scope mode normalizes non-empty strings."""
+    settings = CacheSettings(require_cache_scope=True)
+    assert resolve_cache_scope("  t1  ", settings=settings) == "t1"
+
+
+def test_resolve_cache_scope_optional_allows_empty_bucket() -> None:
+    """Legacy single-tenant mode maps missing scope to the shared empty bucket."""
+    settings = CacheSettings(require_cache_scope=False)
+    assert resolve_cache_scope(None, settings=settings) == ""
+    assert resolve_cache_scope("", settings=settings) == ""
+
+
+@pytest.mark.asyncio
+async def test_get_prefers_storage_scope_key_over_scope_argument() -> None:
+    """``storage_scope_key`` skips re-resolution of ``scope`` (middleware fast path)."""
+    settings = CacheSettings(
+        redis_uri=" ",
+        pg_uri="postgresql://mock/mock",
+        require_cache_scope=True,
+    )
+    cache = _make_cache(_FixedEmbedder(), settings=settings)
+    entry = CacheEntry(
+        id=1,
+        query_text="q",
+        response={"bucket": "scoped"},
+        similarity=0.95,
+    )
+    mock_vs = AsyncMock()
+    mock_vs.open = AsyncMock()
+    mock_vs.ensure_schema = AsyncMock()
+    mock_vs.similarity_search_top_k = AsyncMock(return_value=[entry])
+    cache._vector_store = mock_vs
+
+    out = await cache.get(
+        "hello",
+        scope=None,
+        storage_scope_key="tenant-a",
+    )
+    assert out.is_hit is True
+    assert mock_vs.similarity_search_top_k.await_args.kwargs["scope_key"] == "tenant-a"
+
+
+@pytest.mark.asyncio
+async def test_get_bypasses_store_when_required_scope_missing() -> None:
+    """With ``require_cache_scope`` True, a missing scope avoids embedding and IO."""
+    settings = CacheSettings(
+        redis_uri=" ",
+        pg_uri="postgresql://mock/mock",
+        require_cache_scope=True,
+    )
+    cache = _make_cache(_FixedEmbedder(), settings=settings)
+    mock_vs = AsyncMock()
+    cache._vector_store = mock_vs
+
+    result = await cache.get("hello")
+    assert result.is_hit is False
+    mock_vs.open.assert_not_called()
+    mock_vs.similarity_search_top_k.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_put_noops_when_required_scope_missing() -> None:
+    """With ``require_cache_scope`` True, ``put`` without scope does not persist."""
+    settings = CacheSettings(
+        redis_uri=" ",
+        pg_uri="postgresql://mock/mock",
+        require_cache_scope=True,
+    )
+    cache = _make_cache(_FixedEmbedder(), settings=settings)
+    mock_vs = AsyncMock()
+    cache._vector_store = mock_vs
+
+    await cache.put("abc", {"ok": True})
+    mock_vs.open.assert_not_called()
+    mock_vs.upsert.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_get_put_pass_scope_key_when_required() -> None:
+    """Non-empty scope is forwarded to the vector store and Redis key layout."""
+    settings = CacheSettings(
+        redis_uri="redis://localhost:6379/0",
+        pg_uri="postgresql://mock/mock",
+        require_cache_scope=True,
+    )
+    cache = _make_cache(_FixedEmbedder(), settings=settings)
+    entry = CacheEntry(
+        id=3,
+        query_text="q",
+        response={"k": 1},
+        similarity=0.92,
+    )
+    mock_vs = AsyncMock()
+    mock_vs.open = AsyncMock()
+    mock_vs.ensure_schema = AsyncMock()
+    mock_vs.similarity_search_top_k = AsyncMock(return_value=[entry])
+    mock_vs.upsert = AsyncMock(return_value=4)
+    cache._vector_store = mock_vs
+    mock_redis = AsyncMock()
+    mock_redis.get = AsyncMock(return_value=None)
+    cache._redis_store = mock_redis
+
+    await cache.get("hello", scope="org-9")
+    await cache.put("hello", {"x": 1}, scope="org-9")
+
+    assert mock_vs.similarity_search_top_k.await_args.kwargs["scope_key"] == "org-9"
+    assert mock_vs.upsert.await_args.kwargs["scope_key"] == "org-9"
+    get_key = mock_redis.get.await_args[0][0]
+    assert get_key.endswith(":3")
+    put_key = mock_redis.put.await_args[0][0]
+    assert put_key.endswith(":4")

@@ -73,8 +73,10 @@ app.add_middleware(SemanticCacheMiddleware, cache=cache)
 @app.post("/v1/chat/completions")
 async def chat_completions(body: dict[str, Any]) -> dict[str, Any]:
     # Clients should send JSON with prompt, query, input, or chat messages so the
-    # middleware can build the cache key (see default_extract_query). Misses run your
-    # handler; hits short-circuit with a cached JSON body.
+    # middleware can build the cache key (see default_extract_query). By default a
+    # tenant scope is also required (header X-Semantic-Cache-Scope or JSON
+    # cache_scope / tenant_id); see docs/cache-tuning.md. Misses run your handler;
+    # hits short-circuit with a cached JSON body.
     return {"choices": [{"message": {"role": "assistant", "content": "Hello"}}]}
 ```
 
@@ -110,7 +112,13 @@ app.add_middleware(
 )
 ```
 
-Use **`extract_model`** when the cache key should also vary by model id from headers or JSON (same async `(request, body) -> str | None` idea). That model id is passed through to **`SemanticCache.get` / `put`**, which scope Postgres rows and Redis payload keys per model bucket as described in **`docs/cache-tuning.md`**. For **`create_semantic_cache_proxy_app`**, pass **`extract_query=...`** (and other middleware options) as keyword arguments; they are forwarded to `SemanticCacheMiddleware`.
+Use **`extract_model`** when the cache key should also vary by model id from headers or JSON (same async `(request, body) -> str | None` idea). That model id is passed through to **`SemanticCache.get` / `put`**, which scope Postgres rows and Redis payload keys per model bucket as described in **`docs/cache-tuning.md`**.
+
+Use **`extract_scope`** (optional) when you need custom tenant or user routing; otherwise, with **`SEMANTIC_CACHE_REQUIRE_CACHE_SCOPE`** left at its default **`true`**, the middleware uses **`X-Semantic-Cache-Scope`** and JSON **`cache_scope`** / **`tenant_id`** (numeric **`tenant_id`** is accepted). Treat header or body scope as trusted only if your gateway or app sets it from authenticated identity; otherwise clients can spoof another tenant id. Set **`SEMANTIC_CACHE_REQUIRE_CACHE_SCOPE=false`** only for single-tenant apps or isolated cache storage. Scope rules in middleware match **`SemanticCache.settings`** when **`cache`** is a **`SemanticCache`** instance ( **`cache_settings`** still drives circuit breaker and flight-lock options). **`resolve_cache_scope`** matches the same rules for direct **`SemanticCache`** use.
+
+See **`docs/cache-tuning.md`** for upgrade notes on **`scope_key`** and Redis key layout.
+
+For **`create_semantic_cache_proxy_app`**, pass **`extract_query=...`** (and other middleware options) as keyword arguments; they are forwarded to `SemanticCacheMiddleware`.
 
 Other advanced options (`path_prefix`, HTTP 429 circuit breaker via `cache_settings`, `enabled=False`) are documented on **`SemanticCacheMiddleware`** in `semanticcache.middleware.fastapi`. On shutdown, call `await cache.close()` from a lifespan handler if you want pools closed cleanly.
 
@@ -127,7 +135,7 @@ Other advanced options (`path_prefix`, HTTP 429 circuit breaker via `cache_setti
   request handling continues in fail-open mode.
 - **In-flight lock registry cap** bounds middleware memory used for concurrent
   miss coordination: `SEMANTIC_CACHE_MIDDLEWARE_FLIGHT_LOCK_MAX_ENTRIES`
-  limits retained `(query, model)` lock keys and evicts least-recently-used
+  limits retained `(query, model, scope)` lock keys and evicts least-recently-used
   unlocked entries when needed.
 
 See `docs/cache-tuning.md` for concrete tuning tips and examples.
@@ -150,7 +158,7 @@ app = create_semantic_cache_proxy_app(
 
 Run with `uvicorn mymodule:app --host 0.0.0.0 --port 8080`.
 
-This repository includes a small ASGI app at `app/main.py` (import `app` for uvicorn). Set **`SEMANTIC_CACHE_PROXY_UPSTREAM`** to the backend base URL; the default is `http://127.0.0.1:11434`.
+This repository includes a small ASGI app at `app/main.py` (import `app` for uvicorn). Set **`SEMANTIC_CACHE_PROXY_UPSTREAM`** to the backend base URL; the default is `http://127.0.0.1:11434`. For semantic caching in front of a single trusted upstream, set **`SEMANTIC_CACHE_REQUIRE_CACHE_SCOPE=false`** unless you forward a tenant header or JSON scope from clients.
 
 ```bash
 uv run uvicorn app.main:app --host 0.0.0.0 --port 8080
