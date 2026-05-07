@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from typing import cast
 
 from starlette.requests import Request
 
@@ -20,25 +21,29 @@ def _extract_query_from_mapping(data: dict[str, object]) -> str | None:
         val = data.get(key)
         if isinstance(val, str) and val.strip():
             return val
-    messages = data.get("messages")
-    if isinstance(messages, list):
+    messages_obj: object = data.get("messages")
+    if isinstance(messages_obj, list):
+        messages = cast(list[object], messages_obj)
         parts: list[str] = []
-        for item in messages:
-            if not isinstance(item, dict):
+        for item_obj in messages:
+            if not isinstance(item_obj, dict):
                 continue
+            item = cast(dict[str, object], item_obj)
             if item.get("role") != "user":
                 continue
-            content = item.get("content")
-            if isinstance(content, str) and content.strip():
-                parts.append(content)
-            elif isinstance(content, list):
-                for block in content:
-                    if not isinstance(block, dict):
+            content_obj: object = item.get("content")
+            if isinstance(content_obj, str) and content_obj.strip():
+                parts.append(content_obj)
+            elif isinstance(content_obj, list):
+                content_blocks = cast(list[object], content_obj)
+                for block_obj in content_blocks:
+                    if not isinstance(block_obj, dict):
                         continue
+                    block = cast(dict[str, object], block_obj)
                     if block.get("type") == "text":
-                        text = block.get("text")
-                        if isinstance(text, str) and text.strip():
-                            parts.append(text)
+                        text_obj: object = block.get("text")
+                        if isinstance(text_obj, str) and text_obj.strip():
+                            parts.append(text_obj)
         if parts:
             return "\n".join(parts)
     return None
@@ -79,10 +84,11 @@ async def default_extract_query(request: Request, body: bytes) -> str | None:
     if not looks_json:
         return None
     try:
-        parsed: object = json.loads(body)
+        parsed_obj: object = json.loads(body)
     except json.JSONDecodeError:
         return None
-    if isinstance(parsed, dict):
+    if isinstance(parsed_obj, dict):
+        parsed = cast(dict[str, object], parsed_obj)
         return _extract_query_from_mapping(parsed)
     return None
 
@@ -109,10 +115,11 @@ async def default_extract_model(
     if not body.strip():
         return None
     try:
-        parsed: object = json.loads(body)
+        parsed_obj: object = json.loads(body)
     except json.JSONDecodeError:
         return None
-    if isinstance(parsed, dict):
+    if isinstance(parsed_obj, dict):
+        parsed = cast(dict[str, object], parsed_obj)
         model = parsed.get("model")
         if isinstance(model, str) and model.strip():
             return model.strip()
@@ -141,10 +148,11 @@ async def default_extract_scope(
     if not body.strip():
         return None
     try:
-        parsed: object = json.loads(body)
+        parsed_obj: object = json.loads(body)
     except json.JSONDecodeError:
         return None
-    if isinstance(parsed, dict):
+    if isinstance(parsed_obj, dict):
+        parsed = cast(dict[str, object], parsed_obj)
         for field in ("cache_scope", "tenant_id"):
             coerced = _json_scope_field_value(parsed.get(field))
             if coerced is not None:
