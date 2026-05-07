@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 from collections import Counter
 from typing import TYPE_CHECKING, Awaitable, Literal, TypeVar
@@ -19,6 +20,36 @@ if TYPE_CHECKING:
 
 _logger = logging.getLogger(__name__)
 _T = TypeVar("_T")
+
+
+def _normalize_model_key(model: str | None) -> str:
+    """Normalize optional LLM or routing model id for storage lookup.
+
+    Args:
+        model: Caller-supplied model id, or ``None`` when omitted.
+
+    Returns:
+        Stripped UTF-8 string; ``None`` and whitespace-only values become ``""``
+        (default bucket shared with explicit empty string).
+    """
+    if model is None:
+        return ""
+    return model.strip()
+
+
+def _redis_model_segment(model_key: str) -> str:
+    """Return a short stable Redis key segment for ``model_key``.
+
+    Args:
+        model_key: Normalized model key from ``_normalize_model_key``.
+
+    Returns:
+        The literal ``default`` for the empty bucket, else the first 16 hex chars of
+        the SHA-256 digest of the UTF-8 key (collision-safe for cache routing).
+    """
+    if not model_key:
+        return "default"
+    return hashlib.sha256(model_key.encode("utf-8")).hexdigest()[:16]
 
 
 def _embed_source(
@@ -193,18 +224,20 @@ class SemanticCache:
     async def get(self, query: str, model: str | None = None) -> CacheResult:
         """Embed the query, search vectors, then optionally resolve Redis by row id.
 
-        On a vector hit, the response body prefers Redis (keyed by embedder namespace
-        plus row id) when present; otherwise the JSON from Postgres is returned.
+        On a vector hit, the response body prefers Redis (keyed by embedder namespace,
+        model bucket, and row id) when present; otherwise the JSON from Postgres is
+        returned.
 
         Args:
             query: Text to embed and match semantically.
-            model: Reserved for future embedder routing (unused).
+            model: Logical model id for scoped lookup (same value as ``put``); ``None``
+                or whitespace-only values use the default bucket (``model_key=""``).
 
         Returns:
             ``CacheResult`` with ``is_hit`` False on vector miss, else True with
             similarity and response payload.
         """
-        _ = model
+        model_key = _normalize_model_key(model)
         src = _embed_source(self._settings)
         await self._ensure_open()
         vectors = await self._with_timeout(
@@ -224,6 +257,7 @@ class SemanticCache:
                 query_embedding=query_embedding,
                 threshold=self.threshold,
                 limit=top_k,
+                model_key=model_key,
             ),
         )
         if not entries:
@@ -247,12 +281,14 @@ class SemanticCache:
 
         response: dict[str, object] = chosen_entry.response
         if self._redis_store is not None:
+            redis_key = (
+                f"{self._redis_key_prefix}:{_redis_model_segment(model_key)}:"
+                f"{chosen_entry.id}"
+            )
             from_redis = await self._with_timeout(
                 operation="redis_get",
                 timeout_seconds=self._store_timeout_seconds,
-                work=self._redis_store.get(
-                    f"{self._redis_key_prefix}:{chosen_entry.id}"
-                ),
+                work=self._redis_store.get(redis_key),
             )
             if from_redis is not None:
                 response = from_redis
@@ -268,15 +304,16 @@ class SemanticCache:
     ) -> None:
         """Embed and persist the response in Postgres and optionally Redis.
 
-        Redis stores the same payload under a key scoped to this embedder plus
-        ``row_id``, with configured TTL.
+        Redis stores the same payload under a key scoped to this embedder, model
+        bucket, and ``row_id``, with configured TTL.
 
         Args:
             query: Query text stored alongside the embedding in the pgvector table.
             response: JSON-serializable payload (mirrored in Redis when enabled).
-            model: Reserved for future embedder routing (unused).
+            model: Logical model id for scoped storage (must match ``get``); ``None``
+                or whitespace-only values use the default bucket.
         """
-        _ = model
+        model_key = _normalize_model_key(model)
         await self._ensure_open()
         vectors = await self._with_timeout(
             operation="embed_put",
@@ -290,16 +327,18 @@ class SemanticCache:
         row_id = await self._with_timeout(
             operation="db_upsert",
             timeout_seconds=self._store_timeout_seconds,
-            work=self._vector_store.upsert(query, embedding, response),
+            work=self._vector_store.upsert(
+                query, embedding, response, model_key=model_key
+            ),
         )
         if self._redis_store is not None:
+            redis_key = (
+                f"{self._redis_key_prefix}:{_redis_model_segment(model_key)}:{row_id}"
+            )
             await self._with_timeout(
                 operation="redis_put",
                 timeout_seconds=self._store_timeout_seconds,
-                work=self._redis_store.put(
-                    f"{self._redis_key_prefix}:{row_id}",
-                    response,
-                ),
+                work=self._redis_store.put(redis_key, response),
             )
 
     async def close(self) -> None:

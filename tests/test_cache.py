@@ -159,6 +159,8 @@ async def test_get_hit_prefers_redis_when_enabled() -> None:
     assert result.is_hit is True
     assert result.response == {"from": "redis"}
     mock_redis.get.assert_awaited_once()
+    redis_key = mock_redis.get.await_args[0][0]
+    assert redis_key.endswith(":default:7")
 
 
 @pytest.mark.asyncio
@@ -271,6 +273,7 @@ async def test_put_persists_via_vector_store() -> None:
     assert call[0][0] == "abc"
     assert len(call[0][1]) == 4
     assert call[0][2] == {"ok": True}
+    assert call.kwargs.get("model_key") == ""
 
 
 @pytest.mark.asyncio
@@ -310,6 +313,55 @@ async def test_get_raises_timeout_when_embedder_is_slow() -> None:
         await cache.get("too slow")
     assert cache.timeout_counts.get("embed_get") == 1
     mock_vs.similarity_search_top_k.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_get_put_scope_by_model_key() -> None:
+    """Different ``model`` values use distinct vector search keys and Redis paths."""
+    settings = CacheSettings(
+        redis_uri="redis://localhost:6379/0",
+        pg_uri="postgresql://mock/mock",
+    )
+    cache = _make_cache(_FixedEmbedder(), settings=settings)
+
+    entry_a = CacheEntry(
+        id=1,
+        query_text="q",
+        response={"which": "a"},
+        similarity=0.95,
+    )
+    mock_vs = AsyncMock()
+    mock_vs.open = AsyncMock()
+    mock_vs.ensure_schema = AsyncMock()
+    mock_vs.similarity_search_top_k = AsyncMock(return_value=[entry_a])
+    mock_vs.upsert = AsyncMock(return_value=99)
+    cache._vector_store = mock_vs
+
+    mock_redis = AsyncMock()
+    mock_redis.get = AsyncMock(return_value=None)
+    cache._redis_store = mock_redis
+
+    await cache.get("hello", model="gpt-4")
+    await cache.put("hello", {"x": 1}, model="claude-3")
+
+    assert mock_vs.similarity_search_top_k.await_args.kwargs["model_key"] == "gpt-4"
+    assert mock_vs.upsert.await_args.kwargs["model_key"] == "claude-3"
+
+
+@pytest.mark.asyncio
+async def test_normalize_model_none_and_whitespace_use_default_bucket() -> None:
+    """``None`` and blank ``model`` share the default ``model_key``."""
+    cache = _make_cache(_FixedEmbedder())
+    mock_vs = AsyncMock()
+    mock_vs.open = AsyncMock()
+    mock_vs.ensure_schema = AsyncMock()
+    mock_vs.similarity_search_top_k = AsyncMock(return_value=[])
+    cache._vector_store = mock_vs
+
+    await cache.get("q", model=None)
+    await cache.get("q", model="   ")
+    assert mock_vs.similarity_search_top_k.await_args_list[0].kwargs["model_key"] == ""
+    assert mock_vs.similarity_search_top_k.await_args_list[1].kwargs["model_key"] == ""
 
 
 @pytest.mark.asyncio

@@ -2,6 +2,15 @@
 
 `SemanticCache` uses a two-stage retrieval model so you can trade off recall and precision without changing application code.
 
+### Model-scoped storage
+
+`SemanticCache.get` and `SemanticCache.put` accept an optional **`model`** string (for example an LLM id from JSON or a header). The value is normalized (stripped; `None` or blank becomes the **default bucket**, `model_key=""`). Lookup and writes are scoped:
+
+- **Postgres:** Rows carry a `model_key` column; ANN search only considers rows for that bucket.
+- **Redis:** Response keys include a short hash of the non-empty model id so payloads never collide across models for the same embedder table row id.
+
+Pass the **same** `model` on `get` and `put` for a given upstream route. Middleware flight locks already key on `(query, model)`; storage now matches that behavior.
+
 ### Stage 1: nearest-neighbor search (top-k)
 
 The first stage embeds the query and runs a pgvector similarity search:
