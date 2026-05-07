@@ -155,6 +155,7 @@ class SemanticCacheMiddleware:
     _HEADER_SIMILARITY: str = "X-Cache-Similarity"
     _HEADER_SOURCE: str = "X-Cache-Source"
     _HEADER_CIRCUIT: str = "X-Cache-Circuit"
+    _CACHE_RECORD_MARKER: str = "__semanticcache_record_v1__"
 
     _cache: SemanticCache
     _enabled: bool
@@ -544,6 +545,86 @@ class SemanticCacheMiddleware:
         for key, value in extra.items():
             response.headers[key] = value
 
+    def _cache_record_from_response(
+        self,
+        *,
+        payload: dict[str, object],
+        response: Response,
+    ) -> dict[str, object]:
+        """Build a cache record with payload and response replay metadata.
+
+        Args:
+            payload: Parsed JSON object body from the upstream response.
+            response: Upstream response to mirror on future cache hits.
+
+        Returns:
+            Cache record dictionary with JSON body plus replay metadata.
+        """
+        headers_to_store: dict[str, str] = {}
+        for key, value in response.headers.items():
+            lower = key.lower()
+            if lower == "content-length":
+                continue
+            if lower.startswith("x-cache"):
+                continue
+            headers_to_store[key] = value
+        return {
+            self._CACHE_RECORD_MARKER: True,
+            "body": payload,
+            "meta": {
+                "status_code": response.status_code,
+                "headers": headers_to_store,
+                "media_type": response.media_type,
+            },
+        }
+
+    def _response_from_cache_hit(
+        self,
+        *,
+        result: CacheResult,
+    ) -> Response | None:
+        """Convert a cache hit result to the HTTP response sent to clients.
+
+        Args:
+            result: Cache lookup output with payload and similarity metadata.
+
+        Returns:
+            Response with original status and headers when metadata exists.
+            Returns None when hit payload is not replayable.
+        """
+        cached_payload = result.response
+        if cached_payload is None:
+            return None
+        if cached_payload.get(self._CACHE_RECORD_MARKER) is True:
+            body = cached_payload.get("body")
+            if not isinstance(body, dict):
+                return None
+            raw_meta = cached_payload.get("meta")
+            meta = raw_meta if isinstance(raw_meta, dict) else {}
+            status_code_raw = meta.get("status_code", 200)
+            status_code = (
+                int(status_code_raw) if isinstance(status_code_raw, int) else 200
+            )
+            media_type_raw = meta.get("media_type")
+            media_type = media_type_raw if isinstance(media_type_raw, str) else None
+            headers_raw = meta.get("headers")
+            replay_headers: dict[str, str] = {}
+            if isinstance(headers_raw, dict):
+                for key, value in headers_raw.items():
+                    if isinstance(key, str) and isinstance(value, str):
+                        replay_headers[key] = value
+            headers = {**replay_headers, **self._hit_headers(result)}
+            return JSONResponse(
+                content=body,
+                status_code=status_code,
+                headers=headers,
+                media_type=media_type,
+            )
+        return JSONResponse(
+            content=cached_payload,
+            headers=self._hit_headers(result),
+        )
+
     async def _read_body(self, receive: Receive) -> bytes:
         """Read and buffer the incoming request body from ASGI ``receive``.
 
@@ -751,16 +832,15 @@ class SemanticCacheMiddleware:
             storage_scope_key=scope_storage,
             phase="preflight",
         )
-        if result.is_hit and result.response is not None:
-            await self._send_response(
-                JSONResponse(
-                    content=result.response,
-                    headers=self._hit_headers(result),
-                ),
-                scope,
-                send,
-            )
-            return
+        if result.is_hit:
+            cached_response = self._response_from_cache_hit(result=result)
+            if cached_response is not None:
+                await self._send_response(
+                    cached_response,
+                    scope,
+                    send,
+                )
+                return
 
         flight = await self._get_flight_lock(query, model, scope_storage)
         async with flight:
@@ -773,16 +853,15 @@ class SemanticCacheMiddleware:
                 phase="double_check",
             )
             cache_read_error = cache_read_error or inner_err
-            if result.is_hit and result.response is not None:
-                await self._send_response(
-                    JSONResponse(
-                        content=result.response,
-                        headers=self._hit_headers(result),
-                    ),
-                    scope,
-                    send,
-                )
-                return
+            if result.is_hit:
+                cached_response = self._response_from_cache_hit(result=result)
+                if cached_response is not None:
+                    await self._send_response(
+                        cached_response,
+                        scope,
+                        send,
+                    )
+                    return
 
             if await self._upstream_blocked_by_circuit():
                 miss = self._miss_headers(cache_read_error=cache_read_error)
@@ -846,9 +925,13 @@ class SemanticCacheMiddleware:
             # substring application/json skipped put() entirely.
             if isinstance(payload, dict):
                 try:
+                    cache_record = self._cache_record_from_response(
+                        payload=payload,
+                        response=response,
+                    )
                     await self._cache.put(
                         query,
-                        payload,
+                        cache_record,
                         model=model,
                         storage_scope_key=scope_storage,
                     )

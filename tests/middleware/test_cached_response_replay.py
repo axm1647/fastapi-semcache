@@ -1,0 +1,94 @@
+"""Tests for replaying original response metadata on cache hits."""
+
+from __future__ import annotations
+
+from typing import cast
+
+from fastapi import FastAPI
+from starlette.responses import JSONResponse
+from starlette.testclient import TestClient
+
+from semanticcache.cache import SemanticCache
+from semanticcache.middleware.fastapi import SemanticCacheMiddleware
+from semanticcache.types import CacheResult
+
+
+class _MemoryCache:
+    """Store middleware cache payloads in memory for replay tests."""
+
+    def __init__(self) -> None:
+        self._entries: dict[tuple[str, str | None, str], dict[str, object]] = {}
+
+    async def get(
+        self,
+        query: str,
+        model: str | None = None,
+        *,
+        scope: str | None = None,
+        storage_scope_key: str | None = None,
+    ) -> CacheResult:
+        key = (query, model, storage_scope_key or "")
+        payload = self._entries.get(key)
+        if payload is None:
+            return CacheResult(is_hit=False)
+        return CacheResult(
+            is_hit=True,
+            similarity=0.97,
+            source="none",
+            response=payload,
+        )
+
+    async def put(
+        self,
+        query: str,
+        response: dict[str, object],
+        model: str | None = None,
+        *,
+        scope: str | None = None,
+        storage_scope_key: str | None = None,
+    ) -> None:
+        key = (query, model, storage_scope_key or "")
+        self._entries[key] = response
+        _ = scope
+
+
+def test_cache_hit_replays_status_and_response_metadata() -> None:
+    """Replay upstream status code and headers for cached JSON responses."""
+    app = FastAPI()
+    cache = _MemoryCache()
+    calls = {"count": 0}
+
+    @app.post("/v1/chat")
+    async def _route() -> JSONResponse:
+        calls["count"] += 1
+        return JSONResponse(
+            status_code=201,
+            content={"ok": True},
+            headers={"X-Upstream-Meta": "present"},
+            media_type="application/problem+json",
+        )
+
+    app.add_middleware(
+        SemanticCacheMiddleware,
+        cache=cast(SemanticCache, cache),
+    )
+
+    with TestClient(app) as client:
+        first = client.post("/v1/chat", json={"query": "hi", "cache_scope": "tenant-a"})
+        second = client.post(
+            "/v1/chat",
+            json={"query": "hi", "cache_scope": "tenant-a"},
+        )
+
+    assert first.status_code == 201
+    assert first.headers.get("X-Cache") == "MISS"
+    assert first.headers.get("X-Upstream-Meta") == "present"
+    assert first.headers.get("content-type", "").startswith("application/problem+json")
+
+    assert second.status_code == 201
+    assert second.json() == {"ok": True}
+    assert second.headers.get("X-Cache") == "HIT"
+    assert second.headers.get("X-Upstream-Meta") == "present"
+    assert second.headers.get("content-type", "").startswith("application/problem+json")
+    assert calls["count"] == 1
+
