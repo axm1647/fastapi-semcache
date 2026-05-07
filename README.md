@@ -84,6 +84,8 @@ Run with `uvicorn mymodule:app --host 0.0.0.0 --port 8000`.
 
 If your JSON body does not follow the usual `query` / `prompt` / `messages` patterns, pass an **async** callable as **`extract_query`**. It receives the Starlette **`Request`** and the **raw body bytes** (already buffered by the middleware). Return a **non-empty string** to embed and look up; return **`None`** to skip semantic caching for that request (the route still runs).
 
+If **`extract_query`** or **`extract_model`** raises, the middleware logs the error (with stack trace) and forwards the request upstream **without** calling the cache (same outcome as returning **`None`** from **`extract_query`**, but the route still runs).
+
 You can wrap **`default_extract_query`** and add fallbacks for your own fields, or replace it entirely.
 
 ```python
