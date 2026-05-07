@@ -174,6 +174,7 @@ class SemanticCacheMiddleware:
     _circuit_breaker_enabled: bool
     _circuit_breaker_limit: int
     _circuit_breaker_open_seconds: float
+    _cache_authorized_requests: bool
     _circuit_lock: asyncio.Lock
     _consecutive_429_count: int
     _circuit_open_until: float | None
@@ -218,7 +219,8 @@ class SemanticCacheMiddleware:
                 When ``cache`` exposes a ``settings`` attribute (as ``SemanticCache``
                 does), ``require_cache_scope`` and the middleware scope gate use it so
                 they stay aligned with ``SemanticCache``; otherwise ``cache_settings``
-                applies.
+                applies. This source also controls whether requests that include an
+                ``Authorization`` header are cacheable.
         """
         from ..config import get_cache_settings
 
@@ -251,6 +253,7 @@ class SemanticCacheMiddleware:
         self._circuit_breaker_enabled = resolved.circuit_breaker_429_enabled
         self._circuit_breaker_limit = resolved.circuit_breaker_429_consecutive_limit
         self._circuit_breaker_open_seconds = resolved.circuit_breaker_429_open_seconds
+        self._cache_authorized_requests = resolved.cache_authorized_requests
         self._circuit_lock = asyncio.Lock()
         self._consecutive_429_count = 0
         self._circuit_open_until = None
@@ -782,6 +785,12 @@ class SemanticCacheMiddleware:
             return
         if self._path_prefix is not None and not request.url.path.startswith(
             self._path_prefix
+        ):
+            await self.app(scope, receive, send)
+            return
+        if (
+            not self._cache_authorized_requests
+            and request.headers.get("authorization") is not None
         ):
             await self.app(scope, receive, send)
             return

@@ -158,6 +158,13 @@ class CacheSettings(BaseSettings):
             "Set False only for single-tenant deployments or dedicated cache storage."
         ),
     )
+    cache_authorized_requests: bool = Field(
+        False,
+        description=(
+            "When True, middleware may cache requests that include an Authorization "
+            "header. Default False to avoid accidental cross-user response reuse."
+        ),
+    )
 
 
 def get_cache_settings() -> CacheSettings:
