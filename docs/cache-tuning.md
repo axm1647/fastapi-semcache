@@ -13,7 +13,10 @@ Pass the **same** `model` on `get` and `put` for a given upstream route.
 
 ### Tenant and namespace scope (isolation)
 
-Semantic matches are keyed by **request text and model**, not by HTTP session or auth. If several customers share one cache database or Redis namespace, similar prompts can otherwise return another tenant stored response.
+Semantic matches are keyed by middleware lookup text and model. In middleware mode,
+lookup text includes HTTP method, normalized path, model value, and extracted
+semantic query, then tenant scope is applied separately. This avoids accidental
+cross-endpoint reuse for semantically similar prompts.
 
 **Default (safe shared deployments):** `SEMANTIC_CACHE_REQUIRE_CACHE_SCOPE` (`CacheSettings.require_cache_scope`) is **true**. Then:
 
@@ -113,7 +116,7 @@ handlers.
 ## Middleware in-flight lock registry
 
 `SemanticCacheMiddleware` keeps an in-memory lock table to serialize concurrent
-cache misses for the same `(query, model, scope)` key. To prevent unbounded growth in
+cache misses for the same `(method + normalized path + model + semantic query, scope)` key. To prevent unbounded growth in
 long-lived processes with high key cardinality, configure:
 
 - **`SEMANTIC_CACHE_MIDDLEWARE_FLIGHT_LOCK_MAX_ENTRIES`**
