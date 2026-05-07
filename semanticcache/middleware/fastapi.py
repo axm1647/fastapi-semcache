@@ -30,6 +30,50 @@ _logger = logging.getLogger(__name__)
 _CACHE_KEY_LOG_MAX = 48
 
 
+def _normalize_request_path(path: str) -> str:
+    """Normalize request paths so equivalent routes share one cache namespace.
+
+    Args:
+        path: Raw request path from Starlette.
+
+    Returns:
+        Normalized absolute path with duplicate trailing slash removed.
+    """
+    candidate = path.strip() or "/"
+    if not candidate.startswith("/"):
+        candidate = f"/{candidate}"
+    if candidate != "/":
+        candidate = candidate.rstrip("/")
+    return candidate
+
+
+def _compose_cache_lookup_query(
+    *,
+    method: str,
+    normalized_path: str,
+    model: str | None,
+    semantic_query: str,
+) -> str:
+    """Build the middleware cache lookup text with route and model dimensions.
+
+    Args:
+        method: Uppercase HTTP method.
+        normalized_path: Normalized request path.
+        model: Optional model discriminator.
+        semantic_query: Extracted semantic lookup text.
+
+    Returns:
+        A stable lookup text that scopes semantic similarity by endpoint context.
+    """
+    model_value = (model or "").strip() or "-"
+    return (
+        f"method={method}\n"
+        f"path={normalized_path}\n"
+        f"model={model_value}\n"
+        f"query={semantic_query.strip()}"
+    )
+
+
 def _cache_key_snippet(query: str, max_chars: int = _CACHE_KEY_LOG_MAX) -> str:
     """Return a short, non-secret prefix of the cache key for logs.
 
@@ -807,14 +851,14 @@ class SemanticCacheMiddleware:
         request = Request(scope, receive=_request_receive)
 
         try:
-            query = await self._extract_query(request, body)
+            semantic_query = await self._extract_query(request, body)
         except Exception as exc:
             self._log_extraction_failure(request, phase="extract_query", exc=exc)
             passthrough = await self._call_downstream(scope, body)
             await self._send_response(passthrough, scope, send)
             return
 
-        if query is None or not str(query).strip():
+        if semantic_query is None or not str(semantic_query).strip():
             passthrough = await self._call_downstream(scope, body)
             await self._send_response(passthrough, scope, send)
             return
@@ -827,6 +871,13 @@ class SemanticCacheMiddleware:
             passthrough = await self._call_downstream(scope, body)
             await self._send_response(passthrough, scope, send)
             return
+        normalized_path = _normalize_request_path(request.url.path)
+        query = _compose_cache_lookup_query(
+            method=request.method.upper(),
+            normalized_path=normalized_path,
+            model=model,
+            semantic_query=semantic_query,
+        )
 
         raw_scope: str | None = None
         if self._require_cache_scope:

@@ -195,3 +195,56 @@ def test_cache_store_skipped_when_set_cookie_present() -> None:
     assert second.status_code == 200
     assert second.headers.get("X-Cache") == "MISS"
     assert calls["count"] == 2
+
+
+def test_cache_key_scopes_entries_by_request_path() -> None:
+    """Avoid cross-endpoint cache hits for identical semantic request text."""
+    app = FastAPI()
+    cache = _MemoryCache()
+    calls = {"chat": 0, "embeddings": 0}
+
+    @app.post("/v1/chat")
+    async def _chat_route() -> JSONResponse:
+        calls["chat"] += 1
+        return JSONResponse({"route": "chat"})
+
+    @app.post("/v1/embeddings")
+    async def _embeddings_route() -> JSONResponse:
+        calls["embeddings"] += 1
+        return JSONResponse({"route": "embeddings"})
+
+    app.add_middleware(
+        SemanticCacheMiddleware,
+        cache=cast(SemanticCache, cache),
+    )
+
+    with TestClient(app) as client:
+        chat_first = client.post(
+            "/v1/chat",
+            json={"query": "same", "model": "gpt-5.4-mini", "cache_scope": "tenant-a"},
+        )
+        embeddings_first = client.post(
+            "/v1/embeddings",
+            json={"query": "same", "model": "gpt-5.4-mini", "cache_scope": "tenant-a"},
+        )
+        chat_second = client.post(
+            "/v1/chat",
+            json={"query": "same", "model": "gpt-5.4-mini", "cache_scope": "tenant-a"},
+        )
+        embeddings_second = client.post(
+            "/v1/embeddings",
+            json={"query": "same", "model": "gpt-5.4-mini", "cache_scope": "tenant-a"},
+        )
+
+    assert chat_first.status_code == 200
+    assert embeddings_first.status_code == 200
+    assert chat_first.json() == {"route": "chat"}
+    assert embeddings_first.json() == {"route": "embeddings"}
+    assert chat_first.headers.get("X-Cache") == "MISS"
+    assert embeddings_first.headers.get("X-Cache") == "MISS"
+    assert chat_second.headers.get("X-Cache") == "HIT"
+    assert embeddings_second.headers.get("X-Cache") == "HIT"
+    assert chat_second.json() == {"route": "chat"}
+    assert embeddings_second.json() == {"route": "embeddings"}
+    assert calls["chat"] == 1
+    assert calls["embeddings"] == 1
