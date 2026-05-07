@@ -23,6 +23,11 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from ..cache import SemanticCache, resolve_cache_scope
 from ..types import CacheResult
+from .extractors import (
+    default_extract_model,
+    default_extract_query,
+    default_extract_scope,
+)
 
 if TYPE_CHECKING:
     from ..config import CacheSettings
@@ -123,86 +128,6 @@ def _request_id_for_log(request: Request) -> str | None:
         raw = request.headers.get(name)
         if isinstance(raw, str) and raw.strip():
             return raw.strip()[:128]
-    return None
-
-
-def _extract_query_from_mapping(data: dict[str, object]) -> str | None:
-    """Pick a cache key string from common LLM / search JSON shapes.
-
-    Args:
-        data: Parsed JSON object body.
-
-    Returns:
-        Non-empty query text, or None if no usable field was found.
-    """
-    for key in ("query", "prompt", "input"):
-        val = data.get(key)
-        if isinstance(val, str) and val.strip():
-            return val
-    messages = data.get("messages")
-    if isinstance(messages, list):
-        parts: list[str] = []
-        for item in messages:
-            if not isinstance(item, dict):
-                continue
-            if item.get("role") != "user":
-                continue
-            content = item.get("content")
-            if isinstance(content, str) and content.strip():
-                parts.append(content)
-            elif isinstance(content, list):
-                for block in content:
-                    if not isinstance(block, dict):
-                        continue
-                    if block.get("type") == "text":
-                        text = block.get("text")
-                        if isinstance(text, str) and text.strip():
-                            parts.append(text)
-        if parts:
-            return "\n".join(parts)
-    return None
-
-
-def _json_scope_field_value(value: object) -> str | None:
-    """Normalize ``cache_scope`` / ``tenant_id`` JSON values for cache isolation.
-
-    Args:
-        value: Raw JSON field value.
-
-    Returns:
-        Non-empty scope string, or ``None`` when the value is unusable.
-    """
-    if isinstance(value, str) and value.strip():
-        return value.strip()
-    if isinstance(value, bool):
-        return None
-    if isinstance(value, int):
-        return str(value)
-    return None
-
-
-async def default_extract_query(request: Request, body: bytes) -> str | None:
-    """Derive cache lookup text from JSON ``query`` / ``prompt`` / ``messages`` etc.
-
-    Args:
-        request: Incoming ASGI request (used for ``Content-Type``).
-        body: Raw body bytes (already read from the stream).
-
-    Returns:
-        Query text for embedding, or None if the body should not be cached.
-    """
-    if not body.strip():
-        return None
-    ct = (request.headers.get("content-type") or "").lower()
-    looks_json = "json" in ct or body.lstrip()[:1] in (b"{", b"[")
-    if not looks_json:
-        return None
-    try:
-        parsed: object = json.loads(body)
-    except json.JSONDecodeError:
-        return None
-    if isinstance(parsed, dict):
-        return _extract_query_from_mapping(parsed)
     return None
 
 
@@ -422,20 +347,11 @@ class SemanticCacheMiddleware:
         Returns:
             Model name if present, else None.
         """
-        h = request.headers.get(self._model_header_name)
-        if isinstance(h, str) and h.strip():
-            return h.strip()
-        if not body.strip():
-            return None
-        try:
-            parsed: object = json.loads(body)
-        except json.JSONDecodeError:
-            return None
-        if isinstance(parsed, dict):
-            m = parsed.get("model")
-            if isinstance(m, str) and m.strip():
-                return m.strip()
-        return None
+        return await default_extract_model(
+            request,
+            body,
+            model_header_name=self._model_header_name,
+        )
 
     async def _default_extract_scope(self, request: Request, body: bytes) -> str | None:
         """Read tenant or namespace scope from header or JSON body.
@@ -447,21 +363,11 @@ class SemanticCacheMiddleware:
         Returns:
             Non-empty scope string when present, else None.
         """
-        h = request.headers.get(self._scope_header_name)
-        if isinstance(h, str) and h.strip():
-            return h.strip()
-        if not body.strip():
-            return None
-        try:
-            parsed: object = json.loads(body)
-        except json.JSONDecodeError:
-            return None
-        if isinstance(parsed, dict):
-            for field in ("cache_scope", "tenant_id"):
-                coerced = _json_scope_field_value(parsed.get(field))
-                if coerced is not None:
-                    return coerced
-        return None
+        return await default_extract_scope(
+            request,
+            body,
+            scope_header_name=self._scope_header_name,
+        )
 
     def _hit_headers(self, result: CacheResult) -> dict[str, str]:
         """Build response headers for a cache hit.
