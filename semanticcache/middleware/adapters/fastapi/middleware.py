@@ -7,10 +7,8 @@
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
-from inspect import isawaitable
 from typing import TYPE_CHECKING
 
 from starlette.requests import Request
@@ -20,6 +18,11 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 from ....cache import SemanticCache
 from ....types import CacheResult
 from .asgi_io import call_downstream, read_body, send_response
+from .cache_ops import (
+    cache_get_fail_open,
+    response_allows_cache_store,
+    response_shape_allows_cache_store,
+)
 from .flow import (
     extract_lookup_context_or_passthrough,
     maybe_store_cache_entry,
@@ -27,6 +30,12 @@ from .flow import (
     send_cache_hit_if_available,
     send_circuit_open_response,
     send_passthrough,
+)
+from .logging_utils import (
+    log_cache_get_failure,
+    log_extraction_failure,
+    log_response_validation_failure,
+    log_response_validation_rejected,
 )
 from ...core.extractors import (
     default_extract_model,
@@ -44,10 +53,6 @@ from ...core.replay import (
 
 if TYPE_CHECKING:
     from ....config import CacheSettings
-
-_logger = logging.getLogger(__name__)
-
-_CACHE_KEY_LOG_MAX = 48
 
 
 @dataclass(frozen=True, slots=True)
@@ -110,38 +115,6 @@ def _compose_cache_lookup_query(
         f"model={model_value}\n"
         f"query={semantic_query.strip()}"
     )
-
-
-def _cache_key_snippet(query: str, max_chars: int = _CACHE_KEY_LOG_MAX) -> str:
-    """Return a short, non-secret prefix of the cache key for logs.
-
-    Args:
-        query: Full cache lookup text.
-        max_chars: Maximum characters before truncation.
-
-    Returns:
-        Truncated text with an ellipsis when shortened.
-    """
-    text = query.replace("\n", " ").strip()
-    if len(text) <= max_chars:
-        return text
-    return f"{text[:max_chars]}..."
-
-
-def _request_id_for_log(request: Request) -> str | None:
-    """Best-effort request or trace id from common headers.
-
-    Args:
-        request: Current ASGI request.
-
-    Returns:
-        First non-empty id header value, capped for log safety, or None.
-    """
-    for name in ("X-Request-ID", "X-Correlation-ID", "X-Trace-ID"):
-        raw = request.headers.get(name)
-        if isinstance(raw, str) and raw.strip():
-            return raw.strip()[:128]
-    return None
 
 
 class SemanticCacheMiddleware:
@@ -336,22 +309,13 @@ class SemanticCacheMiddleware:
             phase: ``preflight`` or ``double_check`` for disambiguation.
             exc: The exception raised by the cache layer.
         """
-        rid = _request_id_for_log(request)
-        snippet = _cache_key_snippet(query)
-        model_s = (model or "").strip()[:64] or "-"
-        scope_s = (scope or "").strip()[:64] or "-"
-        _logger.warning(
-            "Semantic cache read failed (%s): route=%s request_id=%s "
-            "cache_key_snippet=%r model=%s scope=%s error=%s: %s",
-            phase,
-            request.url.path,
-            rid if rid is not None else "-",
-            snippet,
-            model_s,
-            scope_s,
-            type(exc).__name__,
-            exc,
-            exc_info=True,
+        log_cache_get_failure(
+            request=request,
+            query=query,
+            model=model,
+            scope=scope,
+            phase=phase,
+            exc=exc,
         )
 
     def _log_extraction_failure(
@@ -369,16 +333,10 @@ class SemanticCacheMiddleware:
                 filtering.
             exc: The exception raised by the extractor.
         """
-        rid = _request_id_for_log(request)
-        _logger.warning(
-            "Semantic cache extraction failed (%s): route=%s request_id=%s "
-            "error=%s: %s",
-            phase,
-            request.url.path,
-            rid if rid is not None else "-",
-            type(exc).__name__,
-            exc,
-            exc_info=True,
+        log_extraction_failure(
+            request=request,
+            phase=phase,
+            exc=exc,
         )
 
     async def _cache_get_fail_open(
@@ -406,25 +364,26 @@ class SemanticCacheMiddleware:
             ``(result, cache_read_error)`` where ``cache_read_error`` is True if
             ``get`` raised and the result is a synthetic miss.
         """
-        try:
-            return (
-                await self._cache.get(
-                    query,
-                    model=model,
-                    storage_scope_key=storage_scope_key,
-                ),
-                False,
-            )
-        except Exception as exc:
-            self._log_cache_get_failure(
+        return await cache_get_fail_open(
+            cache_get=lambda q, m, storage: self._cache.get(
+                q,
+                model=m,
+                storage_scope_key=storage,
+            ),
+            query=query,
+            model=model,
+            scope=scope,
+            storage_scope_key=storage_scope_key,
+            on_failure=lambda q, m, scp, ph, exc: self._log_cache_get_failure(
                 request,
-                query=query,
-                model=model,
-                scope=scope,
-                phase=phase,
+                query=q,
+                model=m,
+                scope=scp,
+                phase=ph,
                 exc=exc,
-            )
-            return (CacheResult(is_hit=False), True)
+            ),
+            phase=phase,
+        )
 
     def _merge_response_headers(
         self,
@@ -470,15 +429,7 @@ class SemanticCacheMiddleware:
             False when ``Cache-Control`` has ``no-store`` or ``private``, or when
             ``Set-Cookie`` is present.
         """
-        if response.headers.get("set-cookie") is not None:
-            return False
-        cache_control = response.headers.get("cache-control")
-        if cache_control is None:
-            return True
-        directives = {
-            part.strip().lower() for part in cache_control.split(",") if part.strip()
-        }
-        return "no-store" not in directives and "private" not in directives
+        return response_allows_cache_store(response)
 
     async def _response_shape_allows_cache_store(
         self,
@@ -493,36 +444,21 @@ class SemanticCacheMiddleware:
             True when no validator is configured, or when the validator accepts the
             payload. False means the response is returned but not stored.
         """
-        if self._validate_response is None:
-            return True
-        try:
-            result = self._validate_response(context)
-            if isawaitable(result):
-                result = await result
-        except Exception as exc:
-            rid = _request_id_for_log(context.request)
-            _logger.warning(
-                "Semantic cache response validation failed: route=%s request_id=%s "
-                "model=%s scope=%s error=%s: %s",
-                context.request.url.path,
-                rid if rid is not None else "-",
-                (context.model or "").strip()[:64] or "-",
-                (context.scope or "").strip()[:64] or "-",
-                type(exc).__name__,
-                exc,
-                exc_info=True,
-            )
-            return False
-        if result:
-            return True
-        _logger.debug(
-            "Semantic cache response validation rejected store: route=%s model=%s "
-            "scope=%s",
-            context.request.url.path,
-            (context.model or "").strip()[:64] or "-",
-            (context.scope or "").strip()[:64] or "-",
+        return await response_shape_allows_cache_store(
+            context=context,
+            validate_response=self._validate_response,
+            on_validation_failure=lambda ctx, exc: log_response_validation_failure(
+                request=ctx.request,
+                model=ctx.model,
+                scope=ctx.scope,
+                exc=exc,
+            ),
+            on_validation_rejected=lambda ctx: log_response_validation_rejected(
+                request=ctx.request,
+                model=ctx.model,
+                scope=ctx.scope,
+            ),
         )
-        return False
 
     def _response_from_cache_hit(
         self,
