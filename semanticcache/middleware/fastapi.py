@@ -20,13 +20,13 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from ..cache import SemanticCache, resolve_cache_scope
 from ..types import CacheResult
-from .extractors import (
+from .core.extractors import (
     default_extract_model,
     default_extract_query,
     default_extract_scope,
 )
-from .coordination import MiddlewareCoordination
-from .replay import (
+from .core.coordination import MiddlewareCoordination
+from .core.replay import (
     build_hit_headers,
     build_miss_headers,
     cache_record_from_response,

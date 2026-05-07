@@ -1,6 +1,6 @@
-"""HTTP middleware for semantic caching."""
+"""FastAPI adapter re-exports for semantic cache middleware."""
 
-from .adapters.fastapi import (
+from ..fastapi import (
     ResponseShapeValidator,
     ResponseValidationContext,
     SemanticCacheMiddleware,
