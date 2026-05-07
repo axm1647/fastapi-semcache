@@ -95,8 +95,7 @@ def log_extraction_failure(
     """
     rid = request_id_for_log(request)
     _logger.warning(
-        "Semantic cache extraction failed (%s): route=%s request_id=%s "
-        "error=%s: %s",
+        "Semantic cache extraction failed (%s): route=%s request_id=%s " "error=%s: %s",
         phase,
         request.url.path,
         rid if rid is not None else "-",

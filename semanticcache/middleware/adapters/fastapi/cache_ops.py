@@ -59,14 +59,18 @@ def response_allows_cache_store(response: Response) -> bool:
     cache_control = response.headers.get("cache-control")
     if cache_control is None:
         return True
-    directives = {part.strip().lower() for part in cache_control.split(",") if part.strip()}
+    directives = {
+        part.strip().lower() for part in cache_control.split(",") if part.strip()
+    }
     return "no-store" not in directives and "private" not in directives
 
 
 async def response_shape_allows_cache_store(
     *,
     context: ResponseValidationContext,
-    validate_response: Callable[[ResponseValidationContext], bool | Awaitable[bool]] | None,
+    validate_response: (
+        Callable[[ResponseValidationContext], bool | Awaitable[bool]] | None
+    ),
     on_validation_failure: Callable[[ResponseValidationContext, Exception], None],
     on_validation_rejected: Callable[[ResponseValidationContext], None],
 ) -> bool:

@@ -8,7 +8,6 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Mapping, Sequence
-from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from starlette.requests import Request
@@ -37,6 +36,7 @@ from .logging_utils import (
     log_response_validation_failure,
     log_response_validation_rejected,
 )
+from .types import ResponseShapeValidator, ResponseValidationContext
 from ...core.extractors import (
     default_extract_model,
     default_extract_query,
@@ -53,24 +53,6 @@ from ...core.replay import (
 
 if TYPE_CHECKING:
     from ....config import CacheSettings
-
-
-@dataclass(frozen=True, slots=True)
-class ResponseValidationContext:
-    """Hold response details passed to a cache store validator."""
-
-    request: Request
-    request_body: bytes
-    response: Response
-    payload: dict[str, object]
-    model: str | None
-    scope: str | None
-
-
-type ResponseShapeValidator = Callable[
-    [ResponseValidationContext],
-    bool | Awaitable[bool],
-]
 
 
 def _normalize_request_path(path: str) -> str:
