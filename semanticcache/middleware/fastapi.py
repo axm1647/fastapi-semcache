@@ -13,6 +13,8 @@ import logging
 import time
 from collections import OrderedDict
 from collections.abc import Awaitable, Callable, MutableMapping, Sequence
+from dataclasses import dataclass
+from inspect import isawaitable
 from typing import TYPE_CHECKING
 
 from starlette.requests import Request
@@ -28,6 +30,24 @@ if TYPE_CHECKING:
 _logger = logging.getLogger(__name__)
 
 _CACHE_KEY_LOG_MAX = 48
+
+
+@dataclass(frozen=True, slots=True)
+class ResponseValidationContext:
+    """Hold response details passed to a cache store validator."""
+
+    request: Request
+    request_body: bytes
+    response: Response
+    payload: dict[str, object]
+    model: str | None
+    scope: str | None
+
+
+type ResponseShapeValidator = Callable[
+    [ResponseValidationContext],
+    bool | Awaitable[bool],
+]
 
 
 def _normalize_request_path(path: str) -> str:
@@ -210,6 +230,7 @@ class SemanticCacheMiddleware:
     _model_header_name: str
     _extract_scope: Callable[[Request, bytes], Awaitable[str | None]] | None
     _scope_header_name: str
+    _validate_response: ResponseShapeValidator | None
     _scope_settings: CacheSettings
     _require_cache_scope: bool
     _flight_lock_registry: asyncio.Lock
@@ -239,6 +260,7 @@ class SemanticCacheMiddleware:
         model_header_name: str = "X-Semantic-Cache-Model",
         extract_scope: Callable[[Request, bytes], Awaitable[str | None]] | None = None,
         scope_header_name: str = "X-Semantic-Cache-Scope",
+        validate_response: ResponseShapeValidator | None = None,
         cache_settings: CacheSettings | None = None,
     ) -> None:
         """Attach semantic caching to a Starlette / FastAPI application.
@@ -258,6 +280,9 @@ class SemanticCacheMiddleware:
                 tenant scope is required, the default reads ``scope_header_name`` and
                 JSON ``cache_scope`` / ``tenant_id`` (including integer ``tenant_id``).
             scope_header_name: Header checked by the default scope extractor.
+            validate_response: Optional sync or async callback that receives a
+                ``ResponseValidationContext`` before a successful JSON object is stored.
+                Return False to skip storing malformed or route-mismatched payloads.
             cache_settings: Optional settings override; defaults to
                 ``get_cache_settings()`` (429 circuit breaker and flight-lock cap).
                 When ``cache`` exposes a ``settings`` attribute (as ``SemanticCache``
@@ -278,6 +303,7 @@ class SemanticCacheMiddleware:
         self._model_header_name = model_header_name
         self._extract_scope = extract_scope
         self._scope_header_name = scope_header_name
+        self._validate_response = validate_response
         self._flight_lock_registry = asyncio.Lock()
         resolved = (
             cache_settings if cache_settings is not None else get_cache_settings()
@@ -645,6 +671,50 @@ class SemanticCacheMiddleware:
         }
         return "no-store" not in directives and "private" not in directives
 
+    async def _response_shape_allows_cache_store(
+        self,
+        context: ResponseValidationContext,
+    ) -> bool:
+        """Return True when the optional response validator accepts a payload.
+
+        Args:
+            context: Response details and parsed JSON payload to validate.
+
+        Returns:
+            True when no validator is configured, or when the validator accepts the
+            payload. False means the response is returned but not stored.
+        """
+        if self._validate_response is None:
+            return True
+        try:
+            result = self._validate_response(context)
+            if isawaitable(result):
+                result = await result
+        except Exception as exc:
+            rid = _request_id_for_log(context.request)
+            _logger.warning(
+                "Semantic cache response validation failed: route=%s request_id=%s "
+                "model=%s scope=%s error=%s: %s",
+                context.request.url.path,
+                rid if rid is not None else "-",
+                (context.model or "").strip()[:64] or "-",
+                (context.scope or "").strip()[:64] or "-",
+                type(exc).__name__,
+                exc,
+                exc_info=True,
+            )
+            return False
+        if result:
+            return True
+        _logger.debug(
+            "Semantic cache response validation rejected store: route=%s model=%s "
+            "scope=%s",
+            context.request.url.path,
+            (context.model or "").strip()[:64] or "-",
+            (context.scope or "").strip()[:64] or "-",
+        )
+        return False
+
     def _response_from_cache_hit(
         self,
         *,
@@ -1003,7 +1073,20 @@ class SemanticCacheMiddleware:
             # Persist JSON objects on success. Do not require a JSON Content-Type: many
             # servers omit the header or use nonstandard values; the old check for the
             # substring application/json skipped put() entirely.
-            if isinstance(payload, dict) and self._response_allows_cache_store(response):
+            if (
+                isinstance(payload, dict)
+                and self._response_allows_cache_store(response)
+                and await self._response_shape_allows_cache_store(
+                    ResponseValidationContext(
+                        request=request,
+                        request_body=body,
+                        response=response,
+                        payload=payload,
+                        model=model,
+                        scope=raw_scope,
+                    )
+                )
+            ):
                 try:
                     cache_record = self._cache_record_from_response(
                         payload=payload,
