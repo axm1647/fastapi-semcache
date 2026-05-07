@@ -7,11 +7,8 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
-import time
-from collections import OrderedDict
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from inspect import isawaitable
@@ -28,6 +25,7 @@ from .extractors import (
     default_extract_query,
     default_extract_scope,
 )
+from .coordination import MiddlewareCoordination
 from .replay import (
     build_hit_headers,
     build_miss_headers,
@@ -165,16 +163,8 @@ class SemanticCacheMiddleware:
     _validate_response: ResponseShapeValidator | None
     _scope_settings: CacheSettings
     _require_cache_scope: bool
-    _flight_lock_registry: asyncio.Lock
-    _flight_locks: OrderedDict[tuple[str, str | None, str], asyncio.Lock]
-    _flight_lock_max_entries: int
-    _circuit_breaker_enabled: bool
-    _circuit_breaker_limit: int
-    _circuit_breaker_open_seconds: float
+    _coordination: MiddlewareCoordination
     _cache_authorized_requests: bool
-    _circuit_lock: asyncio.Lock
-    _consecutive_429_count: int
-    _circuit_open_until: float | None
     app: ASGIApp
 
     def __init__(
@@ -236,7 +226,6 @@ class SemanticCacheMiddleware:
         self._extract_scope = extract_scope
         self._scope_header_name = scope_header_name
         self._validate_response = validate_response
-        self._flight_lock_registry = asyncio.Lock()
         resolved = (
             cache_settings if cache_settings is not None else get_cache_settings()
         )
@@ -248,101 +237,13 @@ class SemanticCacheMiddleware:
         else:
             self._scope_settings = resolved
             self._require_cache_scope = resolved.require_cache_scope
-        self._flight_locks = OrderedDict()
-        self._flight_lock_max_entries = max(
-            1, resolved.middleware_flight_lock_max_entries
+        self._coordination = MiddlewareCoordination(
+            flight_lock_max_entries=resolved.middleware_flight_lock_max_entries,
+            circuit_breaker_enabled=resolved.circuit_breaker_429_enabled,
+            circuit_breaker_limit=resolved.circuit_breaker_429_consecutive_limit,
+            circuit_breaker_open_seconds=resolved.circuit_breaker_429_open_seconds,
         )
-        self._circuit_breaker_enabled = resolved.circuit_breaker_429_enabled
-        self._circuit_breaker_limit = resolved.circuit_breaker_429_consecutive_limit
-        self._circuit_breaker_open_seconds = resolved.circuit_breaker_429_open_seconds
         self._cache_authorized_requests = resolved.cache_authorized_requests
-        self._circuit_lock = asyncio.Lock()
-        self._consecutive_429_count = 0
-        self._circuit_open_until = None
-
-    def _evict_unused_flight_locks(self) -> None:
-        """Evict least-recently-used unlocked flight locks when over capacity.
-
-        This method expects ``self._flight_lock_registry`` to already be held.
-        Locked entries are preserved so active in-flight request coordination is
-        never broken. If every entry is currently locked, the registry can
-        temporarily remain above the configured cap until one becomes idle.
-        """
-        while len(self._flight_locks) > self._flight_lock_max_entries:
-            removed_any = False
-            for key, lock in list(self._flight_locks.items()):
-                if lock.locked():
-                    continue
-                self._flight_locks.pop(key, None)
-                removed_any = True
-                break
-            if not removed_any:
-                return
-
-    async def _get_flight_lock(
-        self, query: str, model: str | None, scope_storage: str
-    ) -> asyncio.Lock:
-        """Return the async lock that serializes miss handling for one cache key.
-
-        Args:
-            query: Extracted cache key text.
-            model: Optional model discriminator (must match ``cache.get`` / ``put``).
-            scope_storage: Resolved scope string passed to ``SemanticCache`` (may be
-                empty when ``require_cache_scope`` is False).
-
-        Returns:
-            Async lock for this ``(query, model, scope)`` tuple.
-        """
-        key = (query, model, scope_storage)
-        async with self._flight_lock_registry:
-            lock = self._flight_locks.get(key)
-            if lock is not None:
-                self._flight_locks.move_to_end(key)
-                return lock
-            lock = asyncio.Lock()
-            self._flight_locks[key] = lock
-            self._evict_unused_flight_locks()
-            return lock
-
-    async def _upstream_blocked_by_circuit(self) -> bool:
-        """Return True when the 429 circuit is open and upstream must not be called.
-
-        Expired open windows are cleared while holding the circuit lock.
-
-        Returns:
-            True if ``call_next`` must be skipped and only cache hits apply.
-        """
-        if not self._circuit_breaker_enabled:
-            return False
-        async with self._circuit_lock:
-            if self._circuit_open_until is None:
-                return False
-            now = time.monotonic()
-            if now >= self._circuit_open_until:
-                self._circuit_open_until = None
-                return False
-            return True
-
-    async def _record_upstream_status_for_circuit(self, status_code: int) -> None:
-        """Count consecutive HTTP 429 responses and open the circuit when tripped."""
-        if not self._circuit_breaker_enabled:
-            return
-        async with self._circuit_lock:
-            if status_code == 429:
-                self._consecutive_429_count += 1
-                if self._consecutive_429_count >= self._circuit_breaker_limit:
-                    self._circuit_open_until = (
-                        time.monotonic() + self._circuit_breaker_open_seconds
-                    )
-                    self._consecutive_429_count = 0
-                    _logger.warning(
-                        "Semantic cache 429 circuit breaker opened for %.2f seconds "
-                        "after %i consecutive 429 response(s) from upstream",
-                        self._circuit_breaker_open_seconds,
-                        self._circuit_breaker_limit,
-                    )
-            else:
-                self._consecutive_429_count = 0
 
     async def _default_extract_model(self, request: Request, body: bytes) -> str | None:
         """Read model from header or JSON body.
@@ -867,7 +768,7 @@ class SemanticCacheMiddleware:
                 )
                 return
 
-        flight = await self._get_flight_lock(query, model, scope_storage)
+        flight = await self._coordination.get_flight_lock(query, model, scope_storage)
         async with flight:
             result, inner_err = await self._cache_get_fail_open(
                 request,
@@ -888,7 +789,7 @@ class SemanticCacheMiddleware:
                     )
                     return
 
-            if await self._upstream_blocked_by_circuit():
+            if await self._coordination.upstream_blocked_by_circuit():
                 miss = self._miss_headers(cache_read_error=cache_read_error)
                 circuit_hdrs = {
                     **miss,
@@ -912,7 +813,9 @@ class SemanticCacheMiddleware:
                 return
 
             response = await self._call_downstream(scope, body)
-            await self._record_upstream_status_for_circuit(response.status_code)
+            await self._coordination.record_upstream_status_for_circuit(
+                response.status_code
+            )
             miss = self._miss_headers(cache_read_error=cache_read_error)
 
             if not (200 <= response.status_code < 300):
