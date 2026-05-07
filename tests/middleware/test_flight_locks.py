@@ -12,7 +12,7 @@ from fastapi import FastAPI
 
 from semanticcache.cache import SemanticCache
 from semanticcache.config import CacheSettings
-from semanticcache.middleware.fastapi import SemanticCacheMiddleware
+from semanticcache.middleware.adapters.fastapi import SemanticCacheMiddleware
 
 
 def _make_middleware(*, max_entries: int) -> SemanticCacheMiddleware:
@@ -41,14 +41,14 @@ async def test_get_flight_lock_evicts_oldest_unlocked_entry_when_over_capacity()
     """Evict the LRU unlocked key when inserting beyond capacity."""
     middleware = _make_middleware(max_entries=2)
 
-    _ = await middleware._get_flight_lock("q1", "m", "")
-    _ = await middleware._get_flight_lock("q2", "m", "")
-    _ = await middleware._get_flight_lock("q3", "m", "")
+    _ = await middleware._coordination.get_flight_lock("q1", "m", "")
+    _ = await middleware._coordination.get_flight_lock("q2", "m", "")
+    _ = await middleware._coordination.get_flight_lock("q3", "m", "")
 
-    assert len(middleware._flight_locks) == 2
-    assert ("q1", "m", "") not in middleware._flight_locks
-    assert ("q2", "m", "") in middleware._flight_locks
-    assert ("q3", "m", "") in middleware._flight_locks
+    assert len(middleware._coordination._flight_locks) == 2
+    assert ("q1", "m", "") not in middleware._coordination._flight_locks
+    assert ("q2", "m", "") in middleware._coordination._flight_locks
+    assert ("q3", "m", "") in middleware._coordination._flight_locks
 
 
 @pytest.mark.asyncio
@@ -56,15 +56,15 @@ async def test_get_flight_lock_access_refreshes_lru_position() -> None:
     """Keep a recently reused lock and evict the older unlocked key."""
     middleware = _make_middleware(max_entries=2)
 
-    _ = await middleware._get_flight_lock("q1", "m", "")
-    _ = await middleware._get_flight_lock("q2", "m", "")
-    _ = await middleware._get_flight_lock("q1", "m", "")
-    _ = await middleware._get_flight_lock("q3", "m", "")
+    _ = await middleware._coordination.get_flight_lock("q1", "m", "")
+    _ = await middleware._coordination.get_flight_lock("q2", "m", "")
+    _ = await middleware._coordination.get_flight_lock("q1", "m", "")
+    _ = await middleware._coordination.get_flight_lock("q3", "m", "")
 
-    assert len(middleware._flight_locks) == 2
-    assert ("q1", "m", "") in middleware._flight_locks
-    assert ("q2", "m", "") not in middleware._flight_locks
-    assert ("q3", "m", "") in middleware._flight_locks
+    assert len(middleware._coordination._flight_locks) == 2
+    assert ("q1", "m", "") in middleware._coordination._flight_locks
+    assert ("q2", "m", "") not in middleware._coordination._flight_locks
+    assert ("q3", "m", "") in middleware._coordination._flight_locks
 
 
 @pytest.mark.asyncio
@@ -72,15 +72,15 @@ async def test_get_flight_lock_skips_eviction_for_locked_entries() -> None:
     """Do not evict entries that are currently coordinating active requests."""
     middleware = _make_middleware(max_entries=2)
 
-    held = await middleware._get_flight_lock("q1", "m", "")
+    held = await middleware._coordination.get_flight_lock("q1", "m", "")
     await held.acquire()
     try:
-        _ = await middleware._get_flight_lock("q2", "m", "")
-        _ = await middleware._get_flight_lock("q3", "m", "")
+        _ = await middleware._coordination.get_flight_lock("q2", "m", "")
+        _ = await middleware._coordination.get_flight_lock("q3", "m", "")
     finally:
         held.release()
 
-    assert len(middleware._flight_locks) == 2
-    assert ("q1", "m", "") in middleware._flight_locks
-    assert ("q2", "m", "") not in middleware._flight_locks
-    assert ("q3", "m", "") in middleware._flight_locks
+    assert len(middleware._coordination._flight_locks) == 2
+    assert ("q1", "m", "") in middleware._coordination._flight_locks
+    assert ("q2", "m", "") not in middleware._coordination._flight_locks
+    assert ("q3", "m", "") in middleware._coordination._flight_locks

@@ -16,7 +16,7 @@ from starlette.testclient import TestClient
 
 from semanticcache.cache import SemanticCache
 from semanticcache.config import CacheSettings
-from semanticcache.middleware.fastapi import SemanticCacheMiddleware
+from semanticcache.middleware.adapters.fastapi import SemanticCacheMiddleware
 from semanticcache.types import CacheResult
 
 

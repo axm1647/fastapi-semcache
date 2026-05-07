@@ -11,7 +11,7 @@ from starlette.responses import JSONResponse
 from starlette.testclient import TestClient
 
 from semanticcache.cache import SemanticCache
-from semanticcache.middleware.fastapi import (
+from semanticcache.middleware.adapters.fastapi import (
     ResponseValidationContext,
     SemanticCacheMiddleware,
 )
