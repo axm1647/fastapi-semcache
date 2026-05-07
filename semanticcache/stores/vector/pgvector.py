@@ -122,6 +122,7 @@ class AsyncPgVectorStore:
                   query_embedding VECTOR({dim}),
                   response JSONB NOT NULL,
                   model_key TEXT NOT NULL DEFAULT '',
+                  scope_key TEXT NOT NULL DEFAULT '',
                   created_at TIMESTAMPTZ DEFAULT NOW()
                 )
                 """).format(tbl=tbl, dim=dim_lit)
@@ -136,11 +137,16 @@ class AsyncPgVectorStore:
                 ALTER TABLE {tbl}
                 ADD COLUMN IF NOT EXISTS model_key TEXT NOT NULL DEFAULT ''
                 """).format(tbl=tbl)
+            migrate_scope_key = sql.SQL("""
+                ALTER TABLE {tbl}
+                ADD COLUMN IF NOT EXISTS scope_key TEXT NOT NULL DEFAULT ''
+                """).format(tbl=tbl)
             async with self._pool.connection() as conn:
                 async with conn.cursor() as cur:
                     await cur.execute(create_table)
                     await cur.execute(create_idx)
                     await cur.execute(migrate_model_key)
+                    await cur.execute(migrate_scope_key)
             self._schema_ready = True
 
     def _ensure_dim(self, embedding: list[float]) -> None:
@@ -158,6 +164,7 @@ class AsyncPgVectorStore:
         response: dict[str, object],
         *,
         model_key: str = "",
+        scope_key: str = "",
     ) -> int:
         """Insert a cache row with optional embedding and JSON response.
 
@@ -167,6 +174,8 @@ class AsyncPgVectorStore:
             response: JSON-serializable payload stored in ``response`` JSONB.
             model_key: Logical model id for scoped similarity search and Redis keys;
                 empty string denotes the default bucket.
+            scope_key: Tenant or namespace bucket; empty string denotes the legacy
+                global bucket when scope requirement is disabled.
 
         Returns:
             Primary key ``id`` of the inserted row.
@@ -178,14 +187,14 @@ class AsyncPgVectorStore:
         vec = _vector_literal(embedding)
         tbl = sql.Identifier(self._table_name)
         insert = sql.SQL("""
-            INSERT INTO {tbl} (query_text, query_embedding, response, model_key)
-            VALUES (%s, %s::vector, %s::jsonb, %s)
+            INSERT INTO {tbl} (query_text, query_embedding, response, model_key, scope_key)
+            VALUES (%s, %s::vector, %s::jsonb, %s, %s)
             RETURNING id
             """).format(tbl=tbl)
         async with self._pool.connection() as conn:
             async with conn.cursor() as cur:
                 _ = await cur.execute(
-                    insert, (query_text, vec, Json(response), model_key)
+                    insert, (query_text, vec, Json(response), model_key, scope_key)
                 )
                 row = await cur.fetchone()
                 if row is None:
@@ -200,6 +209,7 @@ class AsyncPgVectorStore:
         limit: int,
         *,
         model_key: str = "",
+        scope_key: str = "",
     ) -> list[CacheEntry]:
         """Find up to ``limit`` nearest rows and apply a similarity gate.
 
@@ -212,6 +222,8 @@ class AsyncPgVectorStore:
             limit: Maximum number of candidates to return (top-k).
             model_key: Only consider rows with this ``model_key`` (empty string is
                 the default bucket).
+            scope_key: Only consider rows with this ``scope_key`` (empty string is
+                the legacy global bucket).
 
         Returns:
             List of ``CacheEntry`` objects ordered from highest to lowest similarity,
@@ -229,13 +241,15 @@ class AsyncPgVectorStore:
             SELECT id, query_text, response,
                    (1 - (query_embedding <=> %s::vector)) AS similarity
             FROM {tbl}
-            WHERE query_embedding IS NOT NULL AND model_key = %s
+            WHERE query_embedding IS NOT NULL
+              AND model_key = %s
+              AND scope_key = %s
             ORDER BY query_embedding <=> %s::vector
             LIMIT %s
             """).format(tbl=tbl)
         async with self._pool.connection() as conn:
             async with conn.cursor() as cur:
-                _ = await cur.execute(stmt, (vec, model_key, vec, limit))
+                _ = await cur.execute(stmt, (vec, model_key, scope_key, vec, limit))
                 rows = await cur.fetchall()
                 entries: list[CacheEntry] = []
                 for row in rows:
@@ -262,6 +276,7 @@ class AsyncPgVectorStore:
         threshold: float,
         *,
         model_key: str = "",
+        scope_key: str = "",
     ) -> CacheEntry | None:
         """Find the nearest row by cosine distance and apply a similarity gate.
 
@@ -272,6 +287,7 @@ class AsyncPgVectorStore:
             query_embedding: Query vector of length ``embedding_dim``.
             threshold: Minimum similarity in ``[0.0, 1.0]`` for a hit.
             model_key: Only consider rows with this ``model_key``.
+            scope_key: Only consider rows with this ``scope_key``.
 
         Returns:
             ``CacheEntry`` for the single nearest neighbor if similarity is at or
@@ -285,6 +301,7 @@ class AsyncPgVectorStore:
             threshold=threshold,
             limit=1,
             model_key=model_key,
+            scope_key=scope_key,
         )
         if not entries:
             return None

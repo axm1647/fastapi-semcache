@@ -19,7 +19,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from ..cache import SemanticCache
+from ..cache import SemanticCache, resolve_cache_scope
 from ..types import CacheResult
 
 if TYPE_CHECKING:
@@ -99,6 +99,24 @@ def _extract_query_from_mapping(data: dict[str, object]) -> str | None:
     return None
 
 
+def _json_scope_field_value(value: object) -> str | None:
+    """Normalize ``cache_scope`` / ``tenant_id`` JSON values for cache isolation.
+
+    Args:
+        value: Raw JSON field value.
+
+    Returns:
+        Non-empty scope string, or ``None`` when the value is unusable.
+    """
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return str(value)
+    return None
+
+
 async def default_extract_query(request: Request, body: bytes) -> str | None:
     """Derive cache lookup text from JSON ``query`` / ``prompt`` / ``messages`` etc.
 
@@ -127,9 +145,9 @@ async def default_extract_query(request: Request, body: bytes) -> str | None:
 class SemanticCacheMiddleware:
     """Intercept requests, serve semantic cache hits, and populate the cache on miss.
 
-    Concurrent requests with the same extracted query (and model key) coordinate so
-    only one runs the downstream handler on miss; others observe a cache hit after the
-    leader stores the entry (async lock per key, double-checked get).
+    Concurrent requests with the same extracted query, model key, and scope coordinate
+    so only one runs the downstream handler on miss; others observe a cache hit after
+    the leader stores the entry (async lock per key, double-checked get).
     """
 
     _HEADER_CACHE: str = "X-Cache"
@@ -145,8 +163,12 @@ class SemanticCacheMiddleware:
     _extract_query: Callable[[Request, bytes], Awaitable[str | None]]
     _extract_model: Callable[[Request, bytes], Awaitable[str | None]] | None
     _model_header_name: str
+    _extract_scope: Callable[[Request, bytes], Awaitable[str | None]] | None
+    _scope_header_name: str
+    _scope_settings: CacheSettings
+    _require_cache_scope: bool
     _flight_lock_registry: asyncio.Lock
-    _flight_locks: OrderedDict[tuple[str, str | None], asyncio.Lock]
+    _flight_locks: OrderedDict[tuple[str, str | None, str], asyncio.Lock]
     _flight_lock_max_entries: int
     _circuit_breaker_enabled: bool
     _circuit_breaker_limit: int
@@ -169,6 +191,8 @@ class SemanticCacheMiddleware:
         ] = default_extract_query,
         extract_model: Callable[[Request, bytes], Awaitable[str | None]] | None = None,
         model_header_name: str = "X-Semantic-Cache-Model",
+        extract_scope: Callable[[Request, bytes], Awaitable[str | None]] | None = None,
+        scope_header_name: str = "X-Semantic-Cache-Scope",
         cache_settings: CacheSettings | None = None,
     ) -> None:
         """Attach semantic caching to a Starlette / FastAPI application.
@@ -184,8 +208,16 @@ class SemanticCacheMiddleware:
             extract_model: Optional async function for embedder routing; defaults
                 to reading ``model_header_name`` and JSON ``model``.
             model_header_name: Header checked by the default model extractor.
+            extract_scope: Optional async tenant or namespace extractor. When
+                tenant scope is required, the default reads ``scope_header_name`` and
+                JSON ``cache_scope`` / ``tenant_id`` (including integer ``tenant_id``).
+            scope_header_name: Header checked by the default scope extractor.
             cache_settings: Optional settings override; defaults to
-                ``get_cache_settings()`` (429 circuit breaker fields included).
+                ``get_cache_settings()`` (429 circuit breaker and flight-lock cap).
+                When ``cache`` exposes a ``settings`` attribute (as ``SemanticCache``
+                does), ``require_cache_scope`` and the middleware scope gate use it so
+                they stay aligned with ``SemanticCache``; otherwise ``cache_settings``
+                applies.
         """
         from ..config import get_cache_settings
 
@@ -197,10 +229,20 @@ class SemanticCacheMiddleware:
         self._extract_query = extract_query
         self._extract_model = extract_model
         self._model_header_name = model_header_name
+        self._extract_scope = extract_scope
+        self._scope_header_name = scope_header_name
         self._flight_lock_registry = asyncio.Lock()
         resolved = (
             cache_settings if cache_settings is not None else get_cache_settings()
         )
+        self._cache_settings = resolved
+        cache_settings_obj = getattr(cache, "settings", None)
+        if cache_settings_obj is not None:
+            self._scope_settings = cache_settings_obj
+            self._require_cache_scope = cache_settings_obj.require_cache_scope
+        else:
+            self._scope_settings = resolved
+            self._require_cache_scope = resolved.require_cache_scope
         self._flight_locks = OrderedDict()
         self._flight_lock_max_entries = max(
             1, resolved.middleware_flight_lock_max_entries
@@ -231,17 +273,21 @@ class SemanticCacheMiddleware:
             if not removed_any:
                 return
 
-    async def _get_flight_lock(self, query: str, model: str | None) -> asyncio.Lock:
+    async def _get_flight_lock(
+        self, query: str, model: str | None, scope_storage: str
+    ) -> asyncio.Lock:
         """Return the async lock that serializes miss handling for one cache key.
 
         Args:
             query: Extracted cache key text.
             model: Optional model discriminator (must match ``cache.get`` / ``put``).
+            scope_storage: Resolved scope string passed to ``SemanticCache`` (may be
+                empty when ``require_cache_scope`` is False).
 
         Returns:
-            Async lock for this ``(query, model)`` tuple.
+            Async lock for this ``(query, model, scope)`` tuple.
         """
-        key = (query, model)
+        key = (query, model, scope_storage)
         async with self._flight_lock_registry:
             lock = self._flight_locks.get(key)
             if lock is not None:
@@ -317,6 +363,32 @@ class SemanticCacheMiddleware:
                 return m.strip()
         return None
 
+    async def _default_extract_scope(self, request: Request, body: bytes) -> str | None:
+        """Read tenant or namespace scope from header or JSON body.
+
+        Args:
+            request: Current request.
+            body: Raw body bytes.
+
+        Returns:
+            Non-empty scope string when present, else None.
+        """
+        h = request.headers.get(self._scope_header_name)
+        if isinstance(h, str) and h.strip():
+            return h.strip()
+        if not body.strip():
+            return None
+        try:
+            parsed: object = json.loads(body)
+        except json.JSONDecodeError:
+            return None
+        if isinstance(parsed, dict):
+            for field in ("cache_scope", "tenant_id"):
+                coerced = _json_scope_field_value(parsed.get(field))
+                if coerced is not None:
+                    return coerced
+        return None
+
     def _hit_headers(self, result: CacheResult) -> dict[str, str]:
         """Build response headers for a cache hit.
 
@@ -354,6 +426,7 @@ class SemanticCacheMiddleware:
         *,
         query: str,
         model: str | None,
+        scope: str | None = None,
         phase: str,
         exc: Exception,
     ) -> None:
@@ -363,20 +436,23 @@ class SemanticCacheMiddleware:
             request: Current request (path and optional request id only).
             query: Cache key text; only a snippet is logged.
             model: Optional model key; truncated in logs.
+            scope: Optional tenant scope; truncated in logs.
             phase: ``preflight`` or ``double_check`` for disambiguation.
             exc: The exception raised by the cache layer.
         """
         rid = _request_id_for_log(request)
         snippet = _cache_key_snippet(query)
         model_s = (model or "").strip()[:64] or "-"
+        scope_s = (scope or "").strip()[:64] or "-"
         _logger.warning(
             "Semantic cache read failed (%s): route=%s request_id=%s "
-            "cache_key_snippet=%r model=%s error=%s: %s",
+            "cache_key_snippet=%r model=%s scope=%s error=%s: %s",
             phase,
             request.url.path,
             rid if rid is not None else "-",
             snippet,
             model_s,
+            scope_s,
             type(exc).__name__,
             exc,
             exc_info=True,
@@ -389,11 +465,12 @@ class SemanticCacheMiddleware:
         phase: str,
         exc: Exception,
     ) -> None:
-        """Emit a diagnostic warning when ``extract_query`` or ``extract_model`` raises.
+        """Emit a diagnostic warning when an extractor raises.
 
         Args:
             request: Current request (path and optional request id only).
-            phase: ``extract_query`` or ``extract_model`` for log filtering.
+            phase: ``extract_query``, ``extract_model``, or ``extract_scope`` for log
+                filtering.
             exc: The exception raised by the extractor.
         """
         rid = _request_id_for_log(request)
@@ -414,6 +491,8 @@ class SemanticCacheMiddleware:
         query: str,
         model: str | None,
         *,
+        scope: str | None,
+        storage_scope_key: str,
         phase: str,
     ) -> tuple[CacheResult, bool]:
         """Run ``cache.get`` and map failures to a miss without raising.
@@ -422,6 +501,9 @@ class SemanticCacheMiddleware:
             request: Current request (for logging context).
             query: Cache lookup text.
             model: Optional embedder routing key.
+            scope: Optional tenant or namespace for logs (raw extractor output).
+            storage_scope_key: Key already resolved via ``resolve_cache_scope`` for
+                this request (passed to ``SemanticCache.get`` as ``storage_scope_key``).
             phase: Log label for this read (preflight vs double_check).
 
         Returns:
@@ -429,10 +511,22 @@ class SemanticCacheMiddleware:
             ``get`` raised and the result is a synthetic miss.
         """
         try:
-            return (await self._cache.get(query, model=model), False)
+            return (
+                await self._cache.get(
+                    query,
+                    model=model,
+                    storage_scope_key=storage_scope_key,
+                ),
+                False,
+            )
         except Exception as exc:
             self._log_cache_get_failure(
-                request, query=query, model=model, phase=phase, exc=exc
+                request,
+                query=query,
+                model=model,
+                scope=scope,
+                phase=phase,
+                exc=exc,
             )
             return (CacheResult(is_hit=False), True)
 
@@ -559,15 +653,16 @@ class SemanticCacheMiddleware:
             and ``X-Cache-Error: 1`` when any read in the preflight or double-check
             step failed.
 
-            If ``extract_query`` or ``extract_model`` raises, the failure is logged and
-            the request bypasses the cache entirely (same as a transparent pass-through).
+            If ``extract_query``, ``extract_model``, or ``extract_scope`` raises, the
+            failure is logged and the request bypasses the cache entirely (same as a
+            transparent pass-through).
 
             If storing a cache entry fails after the route returned a successful JSON
             body, the error is logged and that body is still returned to the client.
 
-            For the same ``(query, model)``, concurrent misses are serialized: waiters
-            re-check the cache after the leader finishes and usually avoid duplicate
-            upstream work.
+            For the same ``(query, model, scope)``, concurrent misses are serialized:
+            waiters re-check the cache after the leader finishes and usually avoid
+            duplicate upstream work.
 
             When ``circuit_breaker_429_enabled`` is set on ``CacheSettings`` (or via
             ``cache_settings``), enough consecutive upstream HTTP 429 responses open
@@ -623,8 +718,38 @@ class SemanticCacheMiddleware:
             await self._send_response(passthrough, scope, send)
             return
 
+        raw_scope: str | None = None
+        if self._require_cache_scope:
+            scope_extractor = self._extract_scope or self._default_extract_scope
+            try:
+                raw_scope = await scope_extractor(request, body)
+            except Exception as exc:
+                self._log_extraction_failure(request, phase="extract_scope", exc=exc)
+                passthrough = await self._call_downstream(scope, body)
+                await self._send_response(passthrough, scope, send)
+                return
+        elif self._extract_scope is not None:
+            try:
+                raw_scope = await self._extract_scope(request, body)
+            except Exception as exc:
+                self._log_extraction_failure(request, phase="extract_scope", exc=exc)
+                passthrough = await self._call_downstream(scope, body)
+                await self._send_response(passthrough, scope, send)
+                return
+
+        scope_storage = resolve_cache_scope(raw_scope, settings=self._scope_settings)
+        if scope_storage is None:
+            passthrough = await self._call_downstream(scope, body)
+            await self._send_response(passthrough, scope, send)
+            return
+
         result, cache_read_error = await self._cache_get_fail_open(
-            request, query, model, phase="preflight"
+            request,
+            query,
+            model,
+            scope=raw_scope,
+            storage_scope_key=scope_storage,
+            phase="preflight",
         )
         if result.is_hit and result.response is not None:
             await self._send_response(
@@ -637,10 +762,15 @@ class SemanticCacheMiddleware:
             )
             return
 
-        flight = await self._get_flight_lock(query, model)
+        flight = await self._get_flight_lock(query, model, scope_storage)
         async with flight:
             result, inner_err = await self._cache_get_fail_open(
-                request, query, model, phase="double_check"
+                request,
+                query,
+                model,
+                scope=raw_scope,
+                storage_scope_key=scope_storage,
+                phase="double_check",
             )
             cache_read_error = cache_read_error or inner_err
             if result.is_hit and result.response is not None:
@@ -716,7 +846,12 @@ class SemanticCacheMiddleware:
             # substring application/json skipped put() entirely.
             if isinstance(payload, dict):
                 try:
-                    await self._cache.put(query, payload, model=model)
+                    await self._cache.put(
+                        query,
+                        payload,
+                        model=model,
+                        storage_scope_key=scope_storage,
+                    )
                 except Exception:
                     _logger.exception(
                         "Semantic cache write failed; returning upstream response unchanged."

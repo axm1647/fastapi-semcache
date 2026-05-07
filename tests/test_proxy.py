@@ -17,14 +17,27 @@ from semanticcache.types import CacheResult
 class _MissCache:
     """Minimal cache that never hits (proxy forwards to upstream)."""
 
-    async def get(self, query: str, model: str | None = None) -> CacheResult:
-        _ = query, model
+    async def get(
+        self,
+        query: str,
+        model: str | None = None,
+        *,
+        scope: str | None = None,
+        storage_scope_key: str | None = None,
+    ) -> CacheResult:
+        _ = query, model, scope, storage_scope_key
         return CacheResult(is_hit=False)
 
     async def put(
-        self, query: str, response: dict[str, object], model: str | None = None
+        self,
+        query: str,
+        response: dict[str, object],
+        model: str | None = None,
+        *,
+        scope: str | None = None,
+        storage_scope_key: str | None = None,
     ) -> None:
-        _ = query, response, model
+        _ = query, response, model, scope, storage_scope_key
 
 
 def test_create_proxy_rejects_invalid_upstream() -> None:

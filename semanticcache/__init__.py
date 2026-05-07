@@ -1,6 +1,6 @@
 """Semantic caching: embeddings, pgvector, optional Redis."""
 
-from .cache import SemanticCache
+from .cache import SemanticCache, resolve_cache_scope
 from .config import get_cache_settings
 from .middleware import SemanticCacheMiddleware
 from .proxy import create_semantic_cache_proxy_app
@@ -10,6 +10,7 @@ __all__: list[str] = [
     "CacheEntry",
     "CacheQuery",
     "CacheResult",
+    "resolve_cache_scope",
     "SemanticCache",
     "SemanticCacheMiddleware",
     "create_semantic_cache_proxy_app",

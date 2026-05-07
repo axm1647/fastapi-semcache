@@ -20,6 +20,7 @@ from semanticcache.types import CacheResult
 
 _LLM_BODY: dict[str, list[dict[str, str]] | str] = {
     "model": "test-model",
+    "cache_scope": "test-tenant",
     "messages": [{"role": "user", "content": "circuit breaker probe"}],
 }
 
@@ -30,8 +31,15 @@ class _FakeSemanticCache:
     def __init__(self, *, hit: bool = False) -> None:
         self.hit = hit
 
-    async def get(self, query: str, model: str | None = None) -> CacheResult:
-        _ = query
+    async def get(
+        self,
+        query: str,
+        model: str | None = None,
+        *,
+        scope: str | None = None,
+        storage_scope_key: str | None = None,
+    ) -> CacheResult:
+        _ = query, scope, storage_scope_key
         if self.hit:
             return CacheResult(
                 is_hit=True,
@@ -47,9 +55,15 @@ class _FakeSemanticCache:
         )
 
     async def put(
-        self, query: str, response: dict[str, object], model: str | None = None
+        self,
+        query: str,
+        response: dict[str, object],
+        model: str | None = None,
+        *,
+        scope: str | None = None,
+        storage_scope_key: str | None = None,
     ) -> None:
-        _ = query, response, model
+        _ = query, response, model, scope, storage_scope_key
 
 
 def _make_app(
