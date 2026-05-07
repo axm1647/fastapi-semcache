@@ -21,6 +21,50 @@ if TYPE_CHECKING:
 _logger = logging.getLogger(__name__)
 
 
+def normalize_request_path(path: str) -> str:
+    """Normalize request paths so equivalent routes share one cache namespace.
+
+    Args:
+        path: Raw request path from Starlette.
+
+    Returns:
+        Normalized absolute path with duplicate trailing slash removed.
+    """
+    candidate = path.strip() or "/"
+    if not candidate.startswith("/"):
+        candidate = f"/{candidate}"
+    if candidate != "/":
+        candidate = candidate.rstrip("/")
+    return candidate
+
+
+def compose_cache_lookup_query(
+    *,
+    method: str,
+    normalized_path: str,
+    model: str | None,
+    semantic_query: str,
+) -> str:
+    """Build middleware cache lookup text with route and model dimensions.
+
+    Args:
+        method: Uppercase HTTP method.
+        normalized_path: Normalized request path.
+        model: Optional model discriminator.
+        semantic_query: Extracted semantic lookup text.
+
+    Returns:
+        Stable lookup text that scopes semantic similarity by endpoint context.
+    """
+    model_value = (model or "").strip() or "-"
+    return (
+        f"method={method}\n"
+        f"path={normalized_path}\n"
+        f"model={model_value}\n"
+        f"query={semantic_query.strip()}"
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class LookupContext:
     """Hold extracted lookup inputs for one cacheable request."""
@@ -181,8 +225,6 @@ async def extract_lookup_context_or_passthrough(
     extract_model: Callable[[Request, bytes], Awaitable[str | None]],
     extract_scope_required: Callable[[Request, bytes], Awaitable[str | None]],
     extract_scope_optional: Callable[[Request, bytes], Awaitable[str | None]] | None,
-    compose_cache_lookup_query: Callable[[str, str, str | None, str], str],
-    normalize_request_path: Callable[[str], str],
     log_extraction_failure: Callable[[Request, str, Exception], None],
     send_passthrough_fn: Callable[[Scope, bytes, Send], Awaitable[None]],
 ) -> LookupContext | None:
@@ -199,8 +241,6 @@ async def extract_lookup_context_or_passthrough(
         extract_model: Model extractor callback.
         extract_scope_required: Scope extractor used when scope is required.
         extract_scope_optional: Optional scope extractor when scope is not required.
-        compose_cache_lookup_query: Query composer callback.
-        normalize_request_path: Path normalizer callback.
         log_extraction_failure: Extraction failure logger callback.
         send_passthrough_fn: Pass-through response callback.
 
@@ -227,10 +267,10 @@ async def extract_lookup_context_or_passthrough(
 
     normalized_path = normalize_request_path(request.url.path)
     query = compose_cache_lookup_query(
-        request.method.upper(),
-        normalized_path,
-        model,
-        semantic_query,
+        method=request.method.upper(),
+        normalized_path=normalized_path,
+        model=model,
+        semantic_query=semantic_query,
     )
 
     raw_scope: str | None = None

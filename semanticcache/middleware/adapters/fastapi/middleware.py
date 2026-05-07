@@ -54,51 +54,6 @@ from ...core.replay import (
 if TYPE_CHECKING:
     from ....config import CacheSettings
 
-
-def _normalize_request_path(path: str) -> str:
-    """Normalize request paths so equivalent routes share one cache namespace.
-
-    Args:
-        path: Raw request path from Starlette.
-
-    Returns:
-        Normalized absolute path with duplicate trailing slash removed.
-    """
-    candidate = path.strip() or "/"
-    if not candidate.startswith("/"):
-        candidate = f"/{candidate}"
-    if candidate != "/":
-        candidate = candidate.rstrip("/")
-    return candidate
-
-
-def _compose_cache_lookup_query(
-    *,
-    method: str,
-    normalized_path: str,
-    model: str | None,
-    semantic_query: str,
-) -> str:
-    """Build the middleware cache lookup text with route and model dimensions.
-
-    Args:
-        method: Uppercase HTTP method.
-        normalized_path: Normalized request path.
-        model: Optional model discriminator.
-        semantic_query: Extracted semantic lookup text.
-
-    Returns:
-        A stable lookup text that scopes semantic similarity by endpoint context.
-    """
-    model_value = (model or "").strip() or "-"
-    return (
-        f"method={method}\n"
-        f"path={normalized_path}\n"
-        f"model={model_value}\n"
-        f"query={semantic_query.strip()}"
-    )
-
-
 class SemanticCacheMiddleware:
     """Intercept requests, serve semantic cache hits, and populate the cache on miss.
 
@@ -581,13 +536,6 @@ class SemanticCacheMiddleware:
             extract_model=self._extract_model or self._default_extract_model,
             extract_scope_required=self._extract_scope or self._default_extract_scope,
             extract_scope_optional=self._extract_scope,
-            compose_cache_lookup_query=lambda method, normalized_path, model, semantic_query: _compose_cache_lookup_query(
-                method=method,
-                normalized_path=normalized_path,
-                model=model,
-                semantic_query=semantic_query,
-            ),
-            normalize_request_path=_normalize_request_path,
             log_extraction_failure=lambda req, phase, exc: self._log_extraction_failure(
                 req,
                 phase=phase,
