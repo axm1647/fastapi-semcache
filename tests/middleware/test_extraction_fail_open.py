@@ -170,3 +170,60 @@ async def test_missing_scope_with_require_true_skips_cache_io() -> None:
     assert r.status_code == 200
     assert cache.get_calls == 0
     assert cache.put_calls == 0
+
+
+@pytest.mark.asyncio
+async def test_authorization_header_skips_cache_by_default() -> None:
+    """Bypass cache IO when request includes ``Authorization`` by default."""
+    cache = _TrackingCache()
+
+    app = FastAPI()
+
+    @app.post("/v1/chat")
+    async def _route() -> JSONResponse:
+        return JSONResponse({"ok": True})
+
+    app.add_middleware(
+        SemanticCacheMiddleware,
+        cache=cast(SemanticCache, cache),
+    )
+
+    with TestClient(app) as client:
+        r = client.post(
+            "/v1/chat",
+            headers={"Authorization": "Bearer token"},
+            json={"query": "hello", "cache_scope": "tenant-a"},
+        )
+
+    assert r.status_code == 200
+    assert cache.get_calls == 0
+    assert cache.put_calls == 0
+
+
+@pytest.mark.asyncio
+async def test_authorization_header_can_be_explicitly_cached() -> None:
+    """Allow cache IO for ``Authorization`` requests when explicitly enabled."""
+    cache = _TrackingCache()
+
+    app = FastAPI()
+
+    @app.post("/v1/chat")
+    async def _route() -> JSONResponse:
+        return JSONResponse({"ok": True})
+
+    app.add_middleware(
+        SemanticCacheMiddleware,
+        cache=cast(SemanticCache, cache),
+        cache_settings=CacheSettings(cache_authorized_requests=True),
+    )
+
+    with TestClient(app) as client:
+        r = client.post(
+            "/v1/chat",
+            headers={"Authorization": "Bearer token"},
+            json={"query": "hello", "cache_scope": "tenant-a"},
+        )
+
+    assert r.status_code == 200
+    assert cache.get_calls >= 1
+    assert cache.put_calls == 1

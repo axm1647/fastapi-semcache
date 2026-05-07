@@ -25,6 +25,8 @@ Semantic matches are keyed by **request text and model**, not by HTTP session or
 
 For privacy and HTTP cache-safety alignment, middleware also skips cache writes when upstream responds with `Cache-Control: no-store`, `Cache-Control: private`, or any `Set-Cookie` header.
 
+Middleware also bypasses cache reads and writes for requests that include an `Authorization` header unless you explicitly opt in with `SEMANTIC_CACHE_CACHE_AUTHORIZED_REQUESTS=true` (`CacheSettings.cache_authorized_requests`). This default reduces accidental reuse of per-user responses across authenticated callers.
+
 **Trust boundary:** Header and JSON scope values are only safe isolation boundaries when your deployment sets them (for example from verified JWT claims at the edge) or overwrites untrusted client fields before they reach this middleware. Otherwise a client can pick another tenant id and probe for cache hits; always derive scope from authenticated identity in multi-tenant systems.
 
 **Settings alignment:** `SemanticCacheMiddleware` applies `require_cache_scope` and the gate for “missing scope” using **`SemanticCache.settings`** when the `cache` argument is a real `SemanticCache` instance. `cache_settings` still controls circuit breaker and flight-lock limits. Avoid passing a different `require_cache_scope` only via `cache_settings` while using a `SemanticCache` with conflicting settings.
