@@ -12,7 +12,7 @@ import json
 import logging
 import time
 from collections import OrderedDict
-from collections.abc import Awaitable, Callable, MutableMapping, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from inspect import isawaitable
 from typing import TYPE_CHECKING
@@ -27,6 +27,13 @@ from .extractors import (
     default_extract_model,
     default_extract_query,
     default_extract_scope,
+)
+from .replay import (
+    build_hit_headers,
+    build_miss_headers,
+    cache_record_from_response,
+    merge_response_headers,
+    response_from_cache_hit,
 )
 
 if TYPE_CHECKING:
@@ -378,13 +385,12 @@ class SemanticCacheMiddleware:
         Returns:
             Header map including ``X-Cache-*`` entries.
         """
-        hdrs: dict[str, str] = {
-            self._HEADER_CACHE: "HIT",
-            self._HEADER_SOURCE: result.source,
-        }
-        if result.similarity is not None:
-            hdrs[self._HEADER_SIMILARITY] = f"{result.similarity:.6f}"
-        return hdrs
+        return build_hit_headers(
+            result=result,
+            cache_header_name=self._HEADER_CACHE,
+            source_header_name=self._HEADER_SOURCE,
+            similarity_header_name=self._HEADER_SIMILARITY,
+        )
 
     def _miss_headers(self, *, cache_read_error: bool = False) -> dict[str, str]:
         """Return headers attached to uncached or pass-through responses.
@@ -395,10 +401,11 @@ class SemanticCacheMiddleware:
         Returns:
             Header map with ``X-Cache: MISS`` and optional error marker.
         """
-        hdrs: dict[str, str] = {self._HEADER_CACHE: "MISS"}
-        if cache_read_error:
-            hdrs[self._HEADER_CACHE_ERROR] = "1"
-        return hdrs
+        return build_miss_headers(
+            cache_header_name=self._HEADER_CACHE,
+            cache_error_header_name=self._HEADER_CACHE_ERROR,
+            cache_read_error=cache_read_error,
+        )
 
     def _log_cache_get_failure(
         self,
@@ -513,7 +520,7 @@ class SemanticCacheMiddleware:
     def _merge_response_headers(
         self,
         response: Response,
-        extra: MutableMapping[str, str],
+        extra: Mapping[str, str],
     ) -> None:
         """Merge ``extra`` into ``response.headers`` in place.
 
@@ -521,8 +528,7 @@ class SemanticCacheMiddleware:
             response: ASGI response whose headers are mutated.
             extra: Additional header keys and values.
         """
-        for key, value in extra.items():
-            response.headers[key] = value
+        merge_response_headers(response, extra)
 
     def _cache_record_from_response(
         self,
@@ -539,23 +545,11 @@ class SemanticCacheMiddleware:
         Returns:
             Cache record dictionary with JSON body plus replay metadata.
         """
-        headers_to_store: dict[str, str] = {}
-        for key, value in response.headers.items():
-            lower = key.lower()
-            if lower == "content-length":
-                continue
-            if lower.startswith("x-cache"):
-                continue
-            headers_to_store[key] = value
-        return {
-            self._CACHE_RECORD_MARKER: True,
-            "body": payload,
-            "meta": {
-                "status_code": response.status_code,
-                "headers": headers_to_store,
-                "media_type": response.media_type,
-            },
-        }
+        return cache_record_from_response(
+            payload=payload,
+            response=response,
+            cache_record_marker=self._CACHE_RECORD_MARKER,
+        )
 
     def _response_allows_cache_store(self, response: Response) -> bool:
         """Return True when upstream response headers permit cache storage.
@@ -635,37 +629,12 @@ class SemanticCacheMiddleware:
             Response with original status and headers when metadata exists.
             Returns None when hit payload is not replayable.
         """
-        cached_payload = result.response
-        if cached_payload is None:
-            return None
-        if cached_payload.get(self._CACHE_RECORD_MARKER) is True:
-            body = cached_payload.get("body")
-            if not isinstance(body, dict):
-                return None
-            raw_meta = cached_payload.get("meta")
-            meta = raw_meta if isinstance(raw_meta, dict) else {}
-            status_code_raw = meta.get("status_code", 200)
-            status_code = (
-                int(status_code_raw) if isinstance(status_code_raw, int) else 200
-            )
-            media_type_raw = meta.get("media_type")
-            media_type = media_type_raw if isinstance(media_type_raw, str) else None
-            headers_raw = meta.get("headers")
-            replay_headers: dict[str, str] = {}
-            if isinstance(headers_raw, dict):
-                for key, value in headers_raw.items():
-                    if isinstance(key, str) and isinstance(value, str):
-                        replay_headers[key] = value
-            headers = {**replay_headers, **self._hit_headers(result)}
-            return JSONResponse(
-                content=body,
-                status_code=status_code,
-                headers=headers,
-                media_type=media_type,
-            )
-        return JSONResponse(
-            content=cached_payload,
-            headers=self._hit_headers(result),
+        return response_from_cache_hit(
+            result=result,
+            cache_record_marker=self._CACHE_RECORD_MARKER,
+            cache_header_name=self._HEADER_CACHE,
+            source_header_name=self._HEADER_SOURCE,
+            similarity_header_name=self._HEADER_SIMILARITY,
         )
 
     async def _read_body(self, receive: Receive) -> bytes:
