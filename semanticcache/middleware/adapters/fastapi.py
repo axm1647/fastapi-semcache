@@ -20,6 +20,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from ...cache import SemanticCache, resolve_cache_scope
 from ...types import CacheResult
+from .asgi_io import call_downstream, read_body, send_response
 from ..core.extractors import (
     default_extract_model,
     default_extract_query,
@@ -547,20 +548,7 @@ class SemanticCacheMiddleware:
         Returns:
             Full request body bytes.
         """
-        chunks: list[bytes] = []
-        while True:
-            message = await receive()
-            msg_type = message["type"]
-            if msg_type == "http.disconnect":
-                break
-            if msg_type != "http.request":
-                continue
-            chunk = message.get("body", b"")
-            if isinstance(chunk, bytes) and chunk:
-                chunks.append(chunk)
-            if not bool(message.get("more_body", False)):
-                break
-        return b"".join(chunks)
+        return await read_body(receive)
 
     async def _call_downstream(self, scope: Scope, body: bytes) -> Response:
         """Invoke downstream ASGI app and buffer its response.
@@ -572,42 +560,7 @@ class SemanticCacheMiddleware:
         Returns:
             Buffered Starlette ``Response`` built from downstream ASGI messages.
         """
-        status_code = 500
-        response_headers: dict[str, str] = {}
-        response_body: list[bytes] = []
-        body_sent = False
-
-        async def replay_receive() -> Message:
-            nonlocal body_sent
-            if body_sent:
-                return {"type": "http.request", "body": b"", "more_body": False}
-            body_sent = True
-            return {"type": "http.request", "body": body, "more_body": False}
-
-        async def capture_send(message: Message) -> None:
-            nonlocal status_code, response_headers
-            msg_type = message["type"]
-            if msg_type == "http.response.start":
-                status_code = int(message["status"])
-                raw_headers = message.get("headers", [])
-                parsed_headers: dict[str, str] = {}
-                for key, value in raw_headers:
-                    if isinstance(key, bytes) and isinstance(value, bytes):
-                        parsed_headers[key.decode("latin-1")] = value.decode("latin-1")
-                response_headers = parsed_headers
-                return
-            if msg_type == "http.response.body":
-                chunk = message.get("body", b"")
-                if isinstance(chunk, bytes) and chunk:
-                    response_body.append(chunk)
-                return
-
-        await self.app(scope, replay_receive, capture_send)
-        return Response(
-            content=b"".join(response_body),
-            status_code=status_code,
-            headers=response_headers,
-        )
+        return await call_downstream(self.app, scope, body)
 
     async def _send_response(
         self,
@@ -622,11 +575,7 @@ class SemanticCacheMiddleware:
             scope: Current request ASGI scope.
             send: ASGI send callable.
         """
-
-        async def _unused_receive() -> Message:
-            return {"type": "http.disconnect"}
-
-        await response(scope, _unused_receive, send)
+        await send_response(response, scope, send)
 
     async def _send_passthrough(self, scope: Scope, body: bytes, send: Send) -> None:
         """Call downstream and emit the response unchanged.
