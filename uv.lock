@@ -237,7 +237,7 @@ wheels = [
 
 [[package]]
 name = "fastapi-semcache"
-version = "0.2.12"
+version = "0.2.13"
 source = { editable = "." }
 dependencies = [
     { name = "fastapi" },
