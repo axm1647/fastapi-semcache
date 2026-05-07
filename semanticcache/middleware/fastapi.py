@@ -578,6 +578,26 @@ class SemanticCacheMiddleware:
             },
         }
 
+    def _response_allows_cache_store(self, response: Response) -> bool:
+        """Return True when upstream response headers permit cache storage.
+
+        Args:
+            response: Upstream response candidate for cache persistence.
+
+        Returns:
+            False when ``Cache-Control`` has ``no-store`` or ``private``, or when
+            ``Set-Cookie`` is present.
+        """
+        if response.headers.get("set-cookie") is not None:
+            return False
+        cache_control = response.headers.get("cache-control")
+        if cache_control is None:
+            return True
+        directives = {
+            part.strip().lower() for part in cache_control.split(",") if part.strip()
+        }
+        return "no-store" not in directives and "private" not in directives
+
     def _response_from_cache_hit(
         self,
         *,
@@ -923,7 +943,7 @@ class SemanticCacheMiddleware:
             # Persist JSON objects on success. Do not require a JSON Content-Type: many
             # servers omit the header or use nonstandard values; the old check for the
             # substring application/json skipped put() entirely.
-            if isinstance(payload, dict):
+            if isinstance(payload, dict) and self._response_allows_cache_store(response):
                 try:
                     cache_record = self._cache_record_from_response(
                         payload=payload,

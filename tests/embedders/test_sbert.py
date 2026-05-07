@@ -13,8 +13,8 @@ import pytest
 
 from semanticcache.embedders import sbert as sbert_mod
 from semanticcache.embedders.sbert import (
+    BaseEmbedder,
     SBERTEmbedder,
-    _require_positive_dim,
     _require_sentence_transformers,
 )
 from semanticcache.exceptions import (
@@ -29,14 +29,14 @@ from semanticcache.exceptions import (
 )
 def test_require_positive_dim_accepts_positive(dim: int, expected: int) -> None:
     """Return the same value when the dimension is positive."""
-    assert _require_positive_dim(dim) == expected
+    assert BaseEmbedder.require_positive_dim(dim) == expected
 
 
 @pytest.mark.parametrize("dim", [0, -1])
 def test_require_positive_dim_rejects_non_positive(dim: int) -> None:
     """Reject zero or negative embedding widths."""
     with pytest.raises(InvalidEmbeddingDimensionException, match="positive"):
-        _require_positive_dim(dim)
+        BaseEmbedder.require_positive_dim(dim)
 
 
 def test_require_sentence_transformers_import_error(

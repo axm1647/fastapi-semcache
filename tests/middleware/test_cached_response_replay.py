@@ -1,5 +1,7 @@
 """Tests for replaying original response metadata on cache hits."""
 
+# pyright: reportUnusedFunction=false
+
 from __future__ import annotations
 
 from typing import cast
@@ -92,3 +94,104 @@ def test_cache_hit_replays_status_and_response_metadata() -> None:
     assert second.headers.get("content-type", "").startswith("application/problem+json")
     assert calls["count"] == 1
 
+
+def test_cache_store_skipped_when_cache_control_no_store() -> None:
+    """Skip cache writes when upstream marks response as no-store."""
+    app = FastAPI()
+    cache = _MemoryCache()
+    calls = {"count": 0}
+
+    @app.post("/v1/chat")
+    async def _route() -> JSONResponse:
+        calls["count"] += 1
+        return JSONResponse(
+            status_code=200,
+            content={"ok": True},
+            headers={"Cache-Control": "no-store, max-age=0"},
+        )
+
+    app.add_middleware(
+        SemanticCacheMiddleware,
+        cache=cast(SemanticCache, cache),
+    )
+
+    with TestClient(app) as client:
+        first = client.post("/v1/chat", json={"query": "hi", "cache_scope": "tenant-a"})
+        second = client.post(
+            "/v1/chat",
+            json={"query": "hi", "cache_scope": "tenant-a"},
+        )
+
+    assert first.status_code == 200
+    assert first.headers.get("X-Cache") == "MISS"
+    assert second.status_code == 200
+    assert second.headers.get("X-Cache") == "MISS"
+    assert calls["count"] == 2
+
+
+def test_cache_store_skipped_when_cache_control_private() -> None:
+    """Skip cache writes when upstream marks response as private."""
+    app = FastAPI()
+    cache = _MemoryCache()
+    calls = {"count": 0}
+
+    @app.post("/v1/chat")
+    async def _route() -> JSONResponse:
+        calls["count"] += 1
+        return JSONResponse(
+            status_code=200,
+            content={"ok": True},
+            headers={"Cache-Control": "private, max-age=120"},
+        )
+
+    app.add_middleware(
+        SemanticCacheMiddleware,
+        cache=cast(SemanticCache, cache),
+    )
+
+    with TestClient(app) as client:
+        first = client.post("/v1/chat", json={"query": "hi", "cache_scope": "tenant-a"})
+        second = client.post(
+            "/v1/chat",
+            json={"query": "hi", "cache_scope": "tenant-a"},
+        )
+
+    assert first.status_code == 200
+    assert first.headers.get("X-Cache") == "MISS"
+    assert second.status_code == 200
+    assert second.headers.get("X-Cache") == "MISS"
+    assert calls["count"] == 2
+
+
+def test_cache_store_skipped_when_set_cookie_present() -> None:
+    """Skip cache writes when upstream includes Set-Cookie headers."""
+    app = FastAPI()
+    cache = _MemoryCache()
+    calls = {"count": 0}
+
+    @app.post("/v1/chat")
+    async def _route() -> JSONResponse:
+        calls["count"] += 1
+        return JSONResponse(
+            status_code=200,
+            content={"ok": True},
+            headers={"Set-Cookie": "session=abc123; HttpOnly; Path=/"},
+        )
+
+    app.add_middleware(
+        SemanticCacheMiddleware,
+        cache=cast(SemanticCache, cache),
+    )
+
+    with TestClient(app) as client:
+        first = client.post("/v1/chat", json={"query": "hi", "cache_scope": "tenant-a"})
+        second = client.post(
+            "/v1/chat",
+            json={"query": "hi", "cache_scope": "tenant-a"},
+        )
+
+    assert first.status_code == 200
+    assert first.headers.get("X-Cache") == "MISS"
+    assert second.status_code == 200
+    assert second.headers.get("X-Cache") == "MISS"
+    assert calls["count"] == 2
