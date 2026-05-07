@@ -9,30 +9,9 @@ from __future__ import annotations
 import asyncio
 from typing import cast, final, override
 
-from ..exceptions import (
-    EmbeddingDimensionUnavailableException,
-    InvalidEmbeddingDimensionException,
-)
+from ..exceptions import EmbeddingDimensionUnavailableException
 from ..config import get_cache_settings
 from ._base import BaseEmbedder
-
-
-def _require_positive_dim(dim: int) -> int:
-    """Validate embedding dimension for storage alignment.
-
-    Args:
-        dim: Declared vector length.
-
-    Returns:
-        Same value when valid.
-
-    Raises:
-        ValueError: If ``dim`` is not positive.
-    """
-    if dim < 1:
-        msg = "embedding_dim must be positive"
-        raise InvalidEmbeddingDimensionException(msg)
-    return dim
 
 
 def _require_sentence_transformers():
@@ -105,7 +84,7 @@ class SBERTEmbedder(BaseEmbedder):
         if dim is None:
             msg = "SentenceTransformer did not report an embedding dimension"
             raise EmbeddingDimensionUnavailableException(msg)
-        return _require_positive_dim(int(dim))
+        return BaseEmbedder.require_positive_dim(int(dim))
 
     @property
     @override

@@ -2,6 +2,8 @@
 
 from abc import ABC, abstractmethod
 
+from ..exceptions import InvalidEmbeddingDimensionException
+
 
 class BaseEmbedder(ABC):
     """Abstract base class for pluggable text embedding backends."""
@@ -27,3 +29,10 @@ class BaseEmbedder(ABC):
             One embedding vector per input string, same length and order as texts.
             Each inner list is a dense floating-point vector (model-dependent length).
         """
+
+    @staticmethod
+    def require_positive_dim(dim: int) -> int:
+        if dim < 1:
+            msg = "embedding_dim must be positive"
+            raise InvalidEmbeddingDimensionException(msg)
+        return dim

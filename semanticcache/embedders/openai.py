@@ -94,11 +94,8 @@ class OpenAIEmbedder(BaseEmbedder):
             base_url: Optional API base URL (Azure OpenAI, proxies, etc.).
         """
         openai, tiktoken = _require_openai()
-        if dimensions < 1:
-            msg = "dimensions must be positive"
-            raise InvalidEmbeddingDimensionException(msg)
+        self._dimensions = BaseEmbedder.require_positive_dim(dimensions)
         self._model_name = model_name
-        self._dimensions = dimensions
         self._send_dimensions_to_api = send_dimensions_to_api
         self._openai = openai
         self._api_key = api_key
