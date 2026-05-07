@@ -120,6 +120,25 @@ See **`docs/cache-tuning.md`** for upgrade notes on **`scope_key`** and Redis ke
 
 For **`create_semantic_cache_proxy_app`**, pass **`extract_query=...`** (and other middleware options) as keyword arguments; they are forwarded to `SemanticCacheMiddleware`.
 
+Use **`validate_response`** when a route or provider has a strict response schema and you want to avoid storing malformed payloads. The callback receives a `ResponseValidationContext` with the request, raw request body, upstream response, parsed JSON object, model, and scope. Return `False` to return the upstream response normally but skip the cache write.
+
+```python
+from semanticcache import ResponseValidationContext
+
+
+def validate_response(context: ResponseValidationContext) -> bool:
+    if context.request.url.path == "/v1/chat/completions":
+        return isinstance(context.payload.get("choices"), list)
+    return True
+
+
+app.add_middleware(
+    SemanticCacheMiddleware,
+    cache=cache,
+    validate_response=validate_response,
+)
+```
+
 Other advanced options (`path_prefix`, HTTP 429 circuit breaker via `cache_settings`, `enabled=False`) are documented on **`SemanticCacheMiddleware`** in `semanticcache.middleware.fastapi`. On shutdown, call `await cache.close()` from a lifespan handler if you want pools closed cleanly.
 
 ### Cache behavior and tuning

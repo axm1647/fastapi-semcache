@@ -11,7 +11,10 @@ from starlette.responses import JSONResponse
 from starlette.testclient import TestClient
 
 from semanticcache.cache import SemanticCache
-from semanticcache.middleware.fastapi import SemanticCacheMiddleware
+from semanticcache.middleware.fastapi import (
+    ResponseValidationContext,
+    SemanticCacheMiddleware,
+)
 from semanticcache.types import CacheResult
 
 
@@ -20,6 +23,11 @@ class _MemoryCache:
 
     def __init__(self) -> None:
         self._entries: dict[tuple[str, str | None, str], dict[str, object]] = {}
+
+    @property
+    def entry_count(self) -> int:
+        """Return the number of stored cache entries."""
+        return len(self._entries)
 
     async def get(
         self,
@@ -195,6 +203,94 @@ def test_cache_store_skipped_when_set_cookie_present() -> None:
     assert second.status_code == 200
     assert second.headers.get("X-Cache") == "MISS"
     assert calls["count"] == 2
+
+
+def test_cache_store_skipped_when_response_validator_rejects_shape() -> None:
+    """Skip cache writes when the response validator rejects the payload shape."""
+    app = FastAPI()
+    cache = _MemoryCache()
+    calls = {"count": 0}
+
+    def validate_response(context: ResponseValidationContext) -> bool:
+        """Accept only chat responses with OpenAI-style choices."""
+        assert context.request.url.path == "/v1/chat"
+        assert context.model == "gpt-5.4-mini"
+        return isinstance(context.payload.get("choices"), list)
+
+    @app.post("/v1/chat")
+    async def _route() -> JSONResponse:
+        calls["count"] += 1
+        return JSONResponse({"unexpected": True})
+
+    app.add_middleware(
+        SemanticCacheMiddleware,
+        cache=cast(SemanticCache, cache),
+        validate_response=validate_response,
+    )
+
+    with TestClient(app) as client:
+        first = client.post(
+            "/v1/chat",
+            json={"query": "hi", "model": "gpt-5.4-mini", "cache_scope": "tenant-a"},
+        )
+        second = client.post(
+            "/v1/chat",
+            json={"query": "hi", "model": "gpt-5.4-mini", "cache_scope": "tenant-a"},
+        )
+
+    assert first.status_code == 200
+    assert first.headers.get("X-Cache") == "MISS"
+    assert second.status_code == 200
+    assert second.headers.get("X-Cache") == "MISS"
+    assert calls["count"] == 2
+    assert cache.entry_count == 0
+
+
+def test_response_validator_allows_route_and_model_matching_payload() -> None:
+    """Store only payloads that match the expected route and model shape."""
+    app = FastAPI()
+    cache = _MemoryCache()
+    calls = {"count": 0}
+
+    async def validate_response(context: ResponseValidationContext) -> bool:
+        """Accept valid chat payloads for the expected provider model."""
+        return (
+            context.request.url.path == "/v1/chat"
+            and context.model == "gpt-5.4-mini"
+            and isinstance(context.payload.get("choices"), list)
+        )
+
+    @app.post("/v1/chat")
+    async def _route() -> JSONResponse:
+        calls["count"] += 1
+        return JSONResponse(
+            {"choices": [{"message": {"role": "assistant", "content": "hi"}}]}
+        )
+
+    app.add_middleware(
+        SemanticCacheMiddleware,
+        cache=cast(SemanticCache, cache),
+        validate_response=validate_response,
+    )
+
+    with TestClient(app) as client:
+        first = client.post(
+            "/v1/chat",
+            json={"query": "hi", "model": "gpt-5.4-mini", "cache_scope": "tenant-a"},
+        )
+        second = client.post(
+            "/v1/chat",
+            json={"query": "hi", "model": "gpt-5.4-mini", "cache_scope": "tenant-a"},
+        )
+
+    assert first.status_code == 200
+    assert first.headers.get("X-Cache") == "MISS"
+    assert second.status_code == 200
+    assert second.headers.get("X-Cache") == "HIT"
+    assert second.json() == {
+        "choices": [{"message": {"role": "assistant", "content": "hi"}}]
+    }
+    assert calls["count"] == 1
 
 
 def test_cache_key_scopes_entries_by_request_path() -> None:

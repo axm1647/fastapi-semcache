@@ -30,6 +30,37 @@ For privacy and HTTP cache-safety alignment, middleware also skips cache writes 
 
 Middleware also bypasses cache reads and writes for requests that include an `Authorization` header unless you explicitly opt in with `SEMANTIC_CACHE_CACHE_AUTHORIZED_REQUESTS=true` (`CacheSettings.cache_authorized_requests`). This default reduces accidental reuse of per-user responses across authenticated callers.
 
+### Response shape validation
+
+Middleware stores successful responses only when the body parses as a JSON object.
+For provider-specific APIs, add `validate_response` to reject malformed or
+mismatched objects before they can become cache entries. The validator can be
+sync or async and receives `ResponseValidationContext` with the route request,
+raw request body, upstream response, parsed payload, model, and scope.
+
+```python
+from semanticcache import ResponseValidationContext, SemanticCacheMiddleware
+
+
+def validate_response(context: ResponseValidationContext) -> bool:
+    if context.request.url.path == "/v1/chat/completions":
+        return (
+            context.model == "gpt-5.4-mini"
+            and isinstance(context.payload.get("choices"), list)
+        )
+    return True
+
+
+app.add_middleware(
+    SemanticCacheMiddleware,
+    cache=cache,
+    validate_response=validate_response,
+)
+```
+
+Returning `False`, or raising from the validator, skips the cache write while
+still returning the upstream response to the caller.
+
 **Trust boundary:** Header and JSON scope values are only safe isolation boundaries when your deployment sets them (for example from verified JWT claims at the edge) or overwrites untrusted client fields before they reach this middleware. Otherwise a client can pick another tenant id and probe for cache hits; always derive scope from authenticated identity in multi-tenant systems.
 
 **Settings alignment:** `SemanticCacheMiddleware` applies `require_cache_scope` and the gate for “missing scope” using **`SemanticCache.settings`** when the `cache` argument is a real `SemanticCache` instance. `cache_settings` still controls circuit breaker and flight-lock limits. Avoid passing a different `require_cache_scope` only via `cache_settings` while using a `SemanticCache` with conflicting settings.
