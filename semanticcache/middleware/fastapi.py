@@ -202,7 +202,9 @@ class SemanticCacheMiddleware:
             cache_settings if cache_settings is not None else get_cache_settings()
         )
         self._flight_locks = OrderedDict()
-        self._flight_lock_max_entries = max(1, resolved.middleware_flight_lock_max_entries)
+        self._flight_lock_max_entries = max(
+            1, resolved.middleware_flight_lock_max_entries
+        )
         self._circuit_breaker_enabled = resolved.circuit_breaker_429_enabled
         self._circuit_breaker_limit = resolved.circuit_breaker_429_consecutive_limit
         self._circuit_breaker_open_seconds = resolved.circuit_breaker_429_open_seconds
@@ -380,6 +382,32 @@ class SemanticCacheMiddleware:
             exc_info=True,
         )
 
+    def _log_extraction_failure(
+        self,
+        request: Request,
+        *,
+        phase: str,
+        exc: Exception,
+    ) -> None:
+        """Emit a diagnostic warning when ``extract_query`` or ``extract_model`` raises.
+
+        Args:
+            request: Current request (path and optional request id only).
+            phase: ``extract_query`` or ``extract_model`` for log filtering.
+            exc: The exception raised by the extractor.
+        """
+        rid = _request_id_for_log(request)
+        _logger.warning(
+            "Semantic cache extraction failed (%s): route=%s request_id=%s "
+            "error=%s: %s",
+            phase,
+            request.url.path,
+            rid if rid is not None else "-",
+            type(exc).__name__,
+            exc,
+            exc_info=True,
+        )
+
     async def _cache_get_fail_open(
         self,
         request: Request,
@@ -531,6 +559,9 @@ class SemanticCacheMiddleware:
             and ``X-Cache-Error: 1`` when any read in the preflight or double-check
             step failed.
 
+            If ``extract_query`` or ``extract_model`` raises, the failure is logged and
+            the request bypasses the cache entirely (same as a transparent pass-through).
+
             If storing a cache entry fails after the route returned a successful JSON
             body, the error is logged and that body is still returned to the client.
 
@@ -570,14 +601,27 @@ class SemanticCacheMiddleware:
 
         request = Request(scope, receive=_request_receive)
 
-        query = await self._extract_query(request, body)
+        try:
+            query = await self._extract_query(request, body)
+        except Exception as exc:
+            self._log_extraction_failure(request, phase="extract_query", exc=exc)
+            passthrough = await self._call_downstream(scope, body)
+            await self._send_response(passthrough, scope, send)
+            return
+
         if query is None or not str(query).strip():
             passthrough = await self._call_downstream(scope, body)
             await self._send_response(passthrough, scope, send)
             return
 
         extract_model = self._extract_model or self._default_extract_model
-        model = await extract_model(request, body)
+        try:
+            model = await extract_model(request, body)
+        except Exception as exc:
+            self._log_extraction_failure(request, phase="extract_model", exc=exc)
+            passthrough = await self._call_downstream(scope, body)
+            await self._send_response(passthrough, scope, send)
+            return
 
         result, cache_read_error = await self._cache_get_fail_open(
             request, query, model, phase="preflight"

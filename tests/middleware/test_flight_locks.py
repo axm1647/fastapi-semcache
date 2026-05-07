@@ -35,7 +35,9 @@ def _make_middleware(*, max_entries: int) -> SemanticCacheMiddleware:
 
 
 @pytest.mark.asyncio
-async def test_get_flight_lock_evicts_oldest_unlocked_entry_when_over_capacity() -> None:
+async def test_get_flight_lock_evicts_oldest_unlocked_entry_when_over_capacity() -> (
+    None
+):
     """Evict the LRU unlocked key when inserting beyond capacity."""
     middleware = _make_middleware(max_entries=2)
 
