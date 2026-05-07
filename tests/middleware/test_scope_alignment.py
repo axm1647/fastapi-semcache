@@ -17,7 +17,7 @@ from starlette.testclient import TestClient
 from semanticcache.cache import SemanticCache
 from semanticcache.config import CacheSettings
 from semanticcache.embedders import BaseEmbedder
-from semanticcache.middleware.fastapi import SemanticCacheMiddleware
+from semanticcache.middleware.adapters.fastapi import SemanticCacheMiddleware
 
 
 class _MiniEmbedder(BaseEmbedder):

@@ -19,7 +19,7 @@ from starlette.responses import Response
 
 from .cache import SemanticCache
 from .config import get_cache_settings
-from .middleware.fastapi import SemanticCacheMiddleware
+from .middleware.adapters.fastapi import SemanticCacheMiddleware
 
 if TYPE_CHECKING:
     from .config import CacheSettings
