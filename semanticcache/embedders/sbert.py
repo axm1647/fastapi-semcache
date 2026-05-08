@@ -51,7 +51,7 @@ class SBERTEmbedder(BaseEmbedder):
         model_name: str = "sentence-transformers/all-MiniLM-L6-v2",
         *,
         normalize_embeddings: bool = True,
-        token: str | None = None,
+        api_key: str | None = None,
     ) -> None:
         """Load a SentenceTransformer model.
 
@@ -65,7 +65,7 @@ class SBERTEmbedder(BaseEmbedder):
         """
         SentenceTransformer = _require_sentence_transformers()
         self._model_name = model_name
-        self._model = SentenceTransformer(model_name, token=token)
+        self._model = SentenceTransformer(model_name, token=api_key)
         self._normalize_embeddings: bool = normalize_embeddings
 
     @property

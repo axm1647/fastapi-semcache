@@ -23,7 +23,7 @@ def get_embedder(settings: CacheSettings | None = None) -> BaseEmbedder:
     """
     resolved = settings if settings is not None else get_cache_settings()
     if resolved.embedder_type == "huggingface":
-        return SBERTEmbedder(token=resolved.hugging_face_api_key)
+        return SBERTEmbedder(api_key=resolved.hugging_face_api_key)
     if resolved.embedder_type == "openai":
         return OpenAIEmbedder(api_key=resolved.openai_api_key)
     if resolved.embedder_type == "cohere":

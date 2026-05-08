@@ -32,17 +32,19 @@ def test_invalid_embedder_type_raises_validation_error(embedder_type: str) -> No
         CacheSettings.model_validate({"embedder_type": embedder_type})
 
 
-def test_huggingface_embedder_receives_settings_token(
+def test_huggingface_embedder_receives_settings_api_key(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Pass HF API key from settings into ``SBERTEmbedder`` construction."""
     captured: dict[str, str | None] = {}
 
     class _TrackingSBERT:
-        """Capture init token for factory wiring assertions."""
+        """Capture init api key for factory wiring assertions."""
 
-        def __init__(self, *args: object, token: str | None = None, **kwargs: object) -> None:
-            captured["token"] = token
+        def __init__(
+            self, *args: object, api_key: str | None = None, **kwargs: object
+        ) -> None:
+            captured["api_key"] = api_key
 
     monkeypatch.setattr(embedders_mod, "SBERTEmbedder", _TrackingSBERT)
     settings = CacheSettings.model_validate(
@@ -53,4 +55,4 @@ def test_huggingface_embedder_receives_settings_token(
     )
 
     _ = get_embedder(settings)
-    assert captured["token"] == "hf-from-settings"
+    assert captured["api_key"] == "hf-from-settings"

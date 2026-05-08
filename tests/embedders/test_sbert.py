@@ -182,7 +182,7 @@ def test_init_passes_huggingface_token(monkeypatch: pytest.MonkeyPatch) -> None:
             super().__init__(model_name, token=token, **kwargs)
 
     _patch_require_st(monkeypatch, _TrackingFake)
-    SBERTEmbedder(token="hf-test-key")
+    SBERTEmbedder(api_key="hf-test-key")
     assert holder["token"] == "hf-test-key"
 
 
