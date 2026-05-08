@@ -61,6 +61,19 @@ class _SlowEmbedder(_FixedEmbedder):
         return await super().embed(texts)
 
 
+class _CountingEmbedder(_FixedEmbedder):
+    """Track embed calls to assert miss-path vector reuse."""
+
+    def __init__(self, *, dim: int = 4) -> None:
+        super().__init__(dim=dim)
+        self.calls = 0
+
+    @override
+    async def embed(self, texts: list[str]) -> list[list[float]]:
+        self.calls += 1
+        return await super().embed(texts)
+
+
 def test_embedding_dim_mismatch_raises() -> None:
     """Passing a mismatched ``embedding_dim`` surfaces a ``ValueError``."""
     emb = _FixedEmbedder(dim=8)
@@ -523,3 +536,25 @@ async def test_get_put_pass_scope_key_when_required() -> None:
     assert get_key.endswith(":3")
     put_key = mock_redis.put.await_args[0][0]
     assert put_key.endswith(":4")
+
+
+@pytest.mark.asyncio
+async def test_put_reuses_query_embedding_from_get_miss() -> None:
+    """Miss lookup vector can be reused to avoid a second embedding call."""
+    embedder = _CountingEmbedder()
+    cache = _make_cache(embedder)
+    mock_vs = AsyncMock()
+    mock_vs.open = AsyncMock()
+    mock_vs.ensure_schema = AsyncMock()
+    mock_vs.similarity_search_top_k = AsyncMock(return_value=[])
+    mock_vs.upsert = AsyncMock(return_value=11)
+    cache._vector_store = mock_vs
+
+    miss = await cache.get("reuse me")
+    assert miss.is_hit is False
+    assert miss.query_embedding is not None
+    assert embedder.calls == 1
+
+    await cache.put("reuse me", {"ok": True}, query_embedding=miss.query_embedding)
+    assert embedder.calls == 1
+    mock_vs.upsert.assert_awaited_once()

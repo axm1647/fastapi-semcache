@@ -25,6 +25,7 @@ class CacheResult(BaseModel):
         "none",
     ] = "none"
     response: dict[str, object] | None = None
+    query_embedding: list[float] | None = None
 
 
 class CacheEntry(BaseModel):

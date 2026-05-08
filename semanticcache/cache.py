@@ -308,7 +308,8 @@ class SemanticCache:
 
         Returns:
             ``CacheResult`` with ``is_hit`` False on vector miss, else True with
-            similarity and response payload.
+            similarity and response payload. Miss results may include
+            ``query_embedding`` so callers can reuse it in a follow-up ``put``.
         """
         model_key = _normalize_model_key(model)
         scope_key = _resolve_scope_key_for_storage(
@@ -342,7 +343,14 @@ class SemanticCache:
             ),
         )
         if not entries:
-            return CacheResult(is_hit=False, similarity=None, source=src, response=None)
+            miss = CacheResult(
+                is_hit=False,
+                similarity=None,
+                source=src,
+                response=None,
+            )
+            miss.query_embedding = query_embedding
+            return miss
 
         # Stage 2: apply optional rejection threshold to filter borderline scores.
         rejection_threshold = getattr(self._settings, "rejection_threshold", None)
@@ -354,9 +362,14 @@ class SemanticCache:
                     break
             if chosen_entry is None:
                 # All candidates failed the stricter second-stage gate; treat as miss.
-                return CacheResult(
-                    is_hit=False, similarity=None, source=src, response=None
+                miss = CacheResult(
+                    is_hit=False,
+                    similarity=None,
+                    source=src,
+                    response=None,
                 )
+                miss.query_embedding = query_embedding
+                return miss
         else:
             chosen_entry = entries[0]
 
@@ -388,6 +401,7 @@ class SemanticCache:
         *,
         scope: str | None = None,
         storage_scope_key: str | None = None,
+        query_embedding: list[float] | None = None,
     ) -> None:
         """Embed and persist the response in Postgres and optionally Redis.
 
@@ -404,6 +418,9 @@ class SemanticCache:
                 ``storage_scope_key`` is not ``None``.
             storage_scope_key: Optional key from ``resolve_cache_scope`` for this
                 request; same semantics as ``get``.
+            query_embedding: Optional precomputed embedding for ``query``. Middleware
+                can pass the vector produced during ``get`` miss evaluation to avoid
+                an additional embedder call before ``upsert``.
         """
         model_key = _normalize_model_key(model)
         scope_key = _resolve_scope_key_for_storage(
@@ -414,15 +431,24 @@ class SemanticCache:
         if scope_key is None:
             return
         await self._ensure_open()
-        vectors = await self._with_timeout(
-            operation="embed_put",
-            timeout_seconds=self._embed_timeout_seconds,
-            work=self._embedder.embed([query]),
-        )
-        if not vectors:
-            msg = "embedder returned no vectors for a non-empty query list"
-            raise RuntimeError(msg)
-        embedding = vectors[0]
+        if query_embedding is None:
+            vectors = await self._with_timeout(
+                operation="embed_put",
+                timeout_seconds=self._embed_timeout_seconds,
+                work=self._embedder.embed([query]),
+            )
+            if not vectors:
+                msg = "embedder returned no vectors for a non-empty query list"
+                raise RuntimeError(msg)
+            embedding = vectors[0]
+        else:
+            if len(query_embedding) != self._embedding_dim:
+                msg = (
+                    f"provided query_embedding length {len(query_embedding)} does not "
+                    f"match embedder.embedding_dim={self._embedding_dim}"
+                )
+                raise ValueError(msg)
+            embedding = list(query_embedding)
         row_id = await self._with_timeout(
             operation="db_upsert",
             timeout_seconds=self._store_timeout_seconds,
