@@ -311,6 +311,7 @@ async def maybe_store_cache_entry(
     model: str | None,
     raw_scope: str | None,
     scope_storage: str,
+    query_embedding: list[float] | None,
     response_allows_cache_store: Callable[[Response], bool],
     response_shape_allows_cache_store: Callable[
         [Request, bytes, Response, dict[str, object], str | None, str | None],
@@ -319,7 +320,9 @@ async def maybe_store_cache_entry(
     cache_record_from_response: Callable[
         [dict[str, object], Response], dict[str, object]
     ],
-    cache_put: Callable[[str, dict[str, object], str | None, str], Awaitable[None]],
+    cache_put: Callable[
+        [str, dict[str, object], str | None, str, list[float] | None], Awaitable[None]
+    ],
 ) -> None:
     """Store cache entry when response and payload pass cacheability checks.
 
@@ -332,6 +335,7 @@ async def maybe_store_cache_entry(
         model: Optional model discriminator.
         raw_scope: Optional extracted scope value for validation context.
         scope_storage: Resolved storage scope key for cache writes.
+        query_embedding: Optional embedding computed during cache lookup miss path.
         response_allows_cache_store: Response policy callback.
         response_shape_allows_cache_store: Response validator callback.
         cache_record_from_response: Cache record builder callback.
@@ -348,7 +352,7 @@ async def maybe_store_cache_entry(
         return
     try:
         cache_record = cache_record_from_response(payload, response)
-        await cache_put(query, cache_record, model, scope_storage)
+        await cache_put(query, cache_record, model, scope_storage, query_embedding)
     except Exception:
         _logger.exception(
             "Semantic cache write failed; returning upstream response unchanged."

@@ -457,6 +457,45 @@ class SemanticCacheMiddleware:
         """
         await send_response(response, scope, send)
 
+    async def _cache_put_with_optional_embedding(
+        self,
+        query: str,
+        record: dict[str, object],
+        model: str | None,
+        storage_scope_key: str,
+        query_embedding: list[float] | None,
+    ) -> None:
+        """Store a cache record and fall back for legacy cache implementations.
+
+        Args:
+            query: Lookup query string.
+            record: Cache payload and replay metadata.
+            model: Optional model discriminator.
+            storage_scope_key: Resolved scope key for storage.
+            query_embedding: Optional precomputed embedding from a miss lookup.
+
+        Raises:
+            TypeError: Re-raised when a ``TypeError`` is unrelated to unsupported
+                ``query_embedding`` argument handling.
+        """
+        try:
+            await self._cache.put(
+                query,
+                record,
+                model=model,
+                storage_scope_key=storage_scope_key,
+                query_embedding=query_embedding,
+            )
+        except TypeError as exc:
+            if "query_embedding" not in str(exc):
+                raise
+            await self._cache.put(
+                query,
+                record,
+                model=model,
+                storage_scope_key=storage_scope_key,
+            )
+
     async def __call__(
         self,
         scope: Scope,
@@ -630,6 +669,7 @@ class SemanticCacheMiddleware:
                 model=model,
                 raw_scope=raw_scope,
                 scope_storage=scope_storage,
+                query_embedding=result.query_embedding,
                 response_allows_cache_store=self._response_allows_cache_store,
                 response_shape_allows_cache_store=lambda req, req_body, resp, pld, mdl, scp: self._response_shape_allows_cache_store(
                     ResponseValidationContext(
@@ -645,11 +685,12 @@ class SemanticCacheMiddleware:
                     payload=pld,
                     response=resp,
                 ),
-                cache_put=lambda q, record, mdl, storage: self._cache.put(
+                cache_put=lambda q, record, mdl, storage, embedding: self._cache_put_with_optional_embedding(
                     q,
                     record,
-                    model=mdl,
-                    storage_scope_key=storage,
+                    mdl,
+                    storage,
+                    embedding,
                 ),
             )
 

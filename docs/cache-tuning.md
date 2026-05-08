@@ -2,6 +2,10 @@
 
 `SemanticCache` uses a two-stage retrieval model so you can trade off recall and precision without changing application code.
 
+On cache misses handled by `SemanticCacheMiddleware`, the embedding computed during
+`get()` is now reused by `put()` for the same request. This removes one embedder
+call per miss, reducing latency and external embedding API cost.
+
 ### Model-scoped storage
 
 `SemanticCache.get` and `SemanticCache.put` accept an optional **`model`** string (for example an LLM id from JSON or a header). The value is normalized (stripped; `None` or blank becomes the **default bucket**, `model_key=""`). Lookup and writes are scoped:
