@@ -25,7 +25,7 @@ def get_embedder(settings: CacheSettings | None = None) -> BaseEmbedder:
     if resolved.embedder_type == "huggingface":
         return SBERTEmbedder(token=resolved.hugging_face_api_key)
     if resolved.embedder_type == "openai":
-        return OpenAIEmbedder()
+        return OpenAIEmbedder(api_key=resolved.openai_api_key)
     if resolved.embedder_type == "cohere":
         raise NotSupportedEmbedderException("Cohere embeddings are not supported yet.")
     if resolved.embedder_type == "voyage":
