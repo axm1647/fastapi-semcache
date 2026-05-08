@@ -28,6 +28,11 @@ Optional extras:
 - `embed-huggingface-gpu`: Sentence Transformers with a CUDA-enabled PyTorch install.
 - `embed-openai`: OpenAI embeddings (`openai`, `tiktoken`).
 
+Dependency notes:
+
+- Core `fastapi-semcache` has no LangChain dependency.
+- Optional extras only add embedder-specific packages (`sentence-transformers`/`torch` or `openai`/`tiktoken`).
+
 ### CPU
 
 ```bash
