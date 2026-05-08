@@ -6,7 +6,6 @@
 from __future__ import annotations
 
 from typing import Any
-from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
@@ -170,7 +169,7 @@ async def test_embed_uses_to_thread(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_init_passes_huggingface_token(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Optional HF token from settings is passed to the transformer ctor."""
+    """Provided HF token is passed to the transformer constructor."""
     holder: dict[str, str | None] = {}
 
     class _TrackingFake(_FakeSentenceTransformer):
@@ -183,10 +182,7 @@ def test_init_passes_huggingface_token(monkeypatch: pytest.MonkeyPatch) -> None:
             super().__init__(model_name, token=token, **kwargs)
 
     _patch_require_st(monkeypatch, _TrackingFake)
-    mock_settings = MagicMock()
-    mock_settings.hugging_face_api_key = "hf-test-key"
-    monkeypatch.setattr(sbert_mod, "get_cache_settings", lambda: mock_settings)
-    SBERTEmbedder()
+    SBERTEmbedder(token="hf-test-key")
     assert holder["token"] == "hf-test-key"
 
 

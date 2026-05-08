@@ -1,0 +1,1060 @@
+[33mcommit 3dbb450d8caa0b850c0469269fc88380ce14cfe2[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mdevelop[m[33m)[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Fri May 8 11:10:52 2026 +0100
+
+    fix(embedders): inject openai token from settings
+    
+    Ensure the OpenAI embedder is constructed with the API key from resolved cache settings so embedder behavior consistently follows injected configuration.
+
+[33mcommit 1f4b025c6f796454f3be368e76c0c41ef4bad7c7[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Fri May 8 11:06:44 2026 +0100
+
+    fix(embedders): inject huggingface token from settings into sbert
+
+[33mcommit 92de59730b71ca5d31659f2b4a1ff5fe194f21ea[m[33m ([m[1;31morigin/master[m[33m, [m[1;31morigin/HEAD[m[33m, [m[1;32mmaster[m[33m)[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Fri May 8 10:35:46 2026 +0100
+
+    docs(readme): clarify no-langchain core dependency and optional extras
+
+[33mcommit 10d12178c48bde18b7fc10a845899f7100a94dac[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Fri May 8 10:34:12 2026 +0100
+
+    docs(readme): correct FastAPI middleware module path
+
+[33mcommit 12effa2423609534f3f165e953b2c4eaaa7a3242[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Fri May 8 10:26:31 2026 +0100
+
+    chore: bump version number
+
+[33mcommit 9ed8c30eafc268b71c4ddd5f2eba8b80a3d66e5d[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Fri May 8 10:26:03 2026 +0100
+
+    style(middleware/fastapi): reformat with black
+
+[33mcommit d9772ebc213774820cb9c473519c70ac3177abe0[m
+Merge: 6810068 2ad0051
+Author: Adam <143958195+axm1647@users.noreply.github.com>
+Date:   Fri May 8 10:17:11 2026 +0100
+
+    Merge pull request #28 from axm1647/develop
+    
+    feat(cache): reuse miss query embedding for put path to avoid duplicate embed calls
+
+[33mcommit 2ad0051fa0fc656cf028e82154d4ad0b3c6eacc9[m[33m ([m[1;31morigin/develop[m[33m)[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Fri May 8 10:16:28 2026 +0100
+
+    feat(cache): reuse miss query embedding for put path to avoid duplicate embed calls
+
+[33mcommit 68100684f6319abc3958f6b6d415619ab8404830[m
+Merge: c23f811 d6d73ef
+Author: Adam <143958195+axm1647@users.noreply.github.com>
+Date:   Thu May 7 21:00:32 2026 +0100
+
+    Merge pull request #27 from axm1647/develop
+    
+    Refactor middleware for improved structure and typing
+
+[33mcommit d6d73efbad674bd29e8793655b64ae688faccfa8[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Thu May 7 20:59:49 2026 +0100
+
+    test(middleware): update flight lock tests for coordination refactor
+
+[33mcommit 9fdc7cb90261579032242b139f5e796ea895587d[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Thu May 7 20:57:02 2026 +0100
+
+    refactor(middleware): move fastapi path normalization and query composition into flow
+
+[33mcommit 974cd65752ea56035eeb3579b571302eee0c9586[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Thu May 7 20:54:40 2026 +0100
+
+    refactor(middleware/fastapi): move ResponseShapeValidator and ResponseValidationContext to a dedicated types.py file
+
+[33mcommit 3a66e4e677df3b714f61fc4dcf541739c7f20e46[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Thu May 7 20:48:55 2026 +0100
+
+    refactor(middleware): extract fastapi logging and cache operation helpers
+
+[33mcommit 0c81af7f79e7265fbd308d4c66d6ce7c7a6493a8[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Thu May 7 20:44:41 2026 +0100
+
+    refactor(middleware): split fastapi adapter into core and framework modules
+
+[33mcommit 1af6af0126a7c10a214c9eb4f87c5d715ebc22bf[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Thu May 7 20:33:27 2026 +0100
+
+    refactor(middleware): extract fastapi adapter ASGI I/O helpers
+
+[33mcommit 018c07eef02fae1762a07c13830ffc9180bb4624[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Thu May 7 20:28:44 2026 +0100
+
+    refactor(middleware): reorganize semanticcache middleware into core and adapters
+
+[33mcommit e7d283d85ab7be1496cdfd4a1516fe011550f157[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Thu May 7 20:21:09 2026 +0100
+
+    refactor(middleware): reorganize middleware into core and adapter layers
+
+[33mcommit 46a9075cb4df1fff8d47046d87a8856b72fce67e[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Thu May 7 20:15:56 2026 +0100
+
+    refactor(middleware): slim __call__ orchestration
+
+[33mcommit 446f506f20a48c2e9dc26a8467fad19dd6f13169[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Thu May 7 20:12:16 2026 +0100
+
+    refactor(middleware): isolate flight-lock and 429 circuit coordination
+
+[33mcommit 88d3c7d1d1e84ba93af8cc184698fea0e71814b8[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Thu May 7 20:09:44 2026 +0100
+
+    refactor(middleware): move cache replay serialization and response shaping
+
+[33mcommit fdb8309c20c32bb95611ba7efa167df9f3b94b4c[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Thu May 7 20:06:18 2026 +0100
+
+    fix(middleware): tighten JSON extractor typing to eliminate unknown-type diagnostics
+
+[33mcommit bf9bc12897e409db4f11820627bd28faf6fb5239[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Thu May 7 20:03:15 2026 +0100
+
+    refactor(middleware): extract request and query helpers
+    
+    Split JSON request extraction helpers into a dedicated middleware module so the FastAPI middleware class stays focused on request orchestration.
+
+[33mcommit c23f8116bf69ff67b667e8dd088713851c2fe7c8[m
+Merge: 0751fc8 0eb7fac
+Author: Adam <143958195+axm1647@users.noreply.github.com>
+Date:   Thu May 7 19:53:44 2026 +0100
+
+    Merge pull request #26 from axm1647/develop
+    
+    feat(middleware): validate cacheable response payloads
+
+[33mcommit 0eb7fac17c2f5e388aa467403d56b9a3324acced[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Thu May 7 19:52:49 2026 +0100
+
+    feat(middleware): validate cacheable response payloads
+
+[33mcommit 0751fc84e8d3bad3fdeb16fc459adb97752bc029[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Thu May 7 19:02:27 2026 +0100
+
+    chore: bump version number
+
+[33mcommit 37e15141f8f8438efe22d7afc66a2c39c94df2ef[m
+Merge: 0f48764 4e08432
+Author: Adam <143958195+axm1647@users.noreply.github.com>
+Date:   Thu May 7 19:00:37 2026 +0100
+
+    Merge pull request #25 from axm1647/develop
+    
+    fix(middleware): scope semantic cache keys by method path model and query
+
+[33mcommit 4e084323e3bd922192c20a27ffa9f3b95d1fb881[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Thu May 7 18:59:47 2026 +0100
+
+    fix(middleware): scope semantic cache keys by method path model and query
+
+[33mcommit 0f487644882bf45fd77938e3b44b6014c69be533[m
+Merge: 1b40b2f 23f1b68
+Author: Adam <143958195+axm1647@users.noreply.github.com>
+Date:   Thu May 7 18:21:59 2026 +0100
+
+    Merge pull request #24 from axm1647/develop
+    
+    feat(middleware): bypass auth-header requests from cache by default
+
+[33mcommit 23f1b689cb4d27509228a00f7e8dbf8a59c12edb[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Thu May 7 18:21:06 2026 +0100
+
+    feat(middleware): bypass auth-header requests from cache by default
+
+[33mcommit 1b40b2f20918b43b857c529e96bd82c65bb04412[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Thu May 7 17:32:49 2026 +0100
+
+    chore: bump version number
+
+[33mcommit 56302338a57e5baf2ff149a82692abaf6963e1d5[m
+Merge: cbfa9fe 1d1ab24
+Author: Adam <143958195+axm1647@users.noreply.github.com>
+Date:   Thu May 7 17:30:44 2026 +0100
+
+    Merge pull request #23 from axm1647/develop
+    
+    feat(middleware): skip semantic cache writes for private/no-store and set-cookie responses
+
+[33mcommit 1d1ab24d45158aed2c3f699ea8b73a92fb072e07[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Thu May 7 17:29:10 2026 +0100
+
+    test(middleware): add cache bypass coverage for no-store, private, and set-cookie responses
+
+[33mcommit be453fbff12eff1fd1c23e85b36f12a2d8371af3[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Thu May 7 10:25:56 2026 +0100
+
+    feat(middleware): skip semantic cache writes for private/no-store and set-cookie responses
+
+[33mcommit a49799e344e58faa35896c61dbb587ae30f479a6[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Thu May 7 10:24:20 2026 +0100
+
+    tests(embedders): fix tests to use updated embedding dimension method
+
+[33mcommit cbfa9fea02599cc6717601c3051cf1f7b7f42ae0[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Thu May 7 10:14:27 2026 +0100
+
+    refactor(embedders): hoist dimension validation onto BaseEmbedder
+
+[33mcommit 2f54cb799954871cd3a3924605c12eefa62317a1[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Thu May 7 10:04:57 2026 +0100
+
+    chore: bump version
+
+[33mcommit 9500fc6ad914f11cbefcdbcdf8760877476993fb[m
+Merge: 83b858f d294752
+Author: Adam <143958195+axm1647@users.noreply.github.com>
+Date:   Thu May 7 09:42:57 2026 +0100
+
+    Merge pull request #22 from axm1647/develop
+    
+    fix(middleware): replay original status and response metadata on cache hits
+
+[33mcommit d2947524de30dc04d936b770a668167fcb393282[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Thu May 7 09:41:58 2026 +0100
+
+    fix(middleware): replay original status and response metadata on cache hits
+
+[33mcommit 83b858f29fe1e8d875bbba5d73c08e5c3c4eaa92[m
+Merge: ca46b49 5636c74
+Author: Adam <143958195+axm1647@users.noreply.github.com>
+Date:   Thu May 7 01:48:37 2026 +0100
+
+    Merge pull request #21 from axm1647/develop
+    
+    feat(cache): add tenant scope isolation and configurable enforcement
+
+[33mcommit 5636c744cac2f973ba06a6c42537e20999b8e6de[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Thu May 7 01:47:33 2026 +0100
+
+    feat(cache): add tenant scope isolation and configurable enforcement
+
+[33mcommit ca46b49ef591730c51993f48fc708436cf3d968e[m
+Merge: e79c3f4 d2e1cc9
+Author: Adam <143958195+axm1647@users.noreply.github.com>
+Date:   Thu May 7 01:24:36 2026 +0100
+
+    Merge pull request #20 from axm1647/develop
+    
+    feat(middleware): bypass cache when extract_query or extract_model raises
+
+[33mcommit d2e1cc9143955997a28c0e2cbb76ff802b614017[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Thu May 7 01:23:13 2026 +0100
+
+    feat(middleware): bypass cache when extract_query or extract_model raises
+
+[33mcommit e79c3f4cad2b0cdea67d11783261a8be04d7979f[m
+Merge: dad6f4d 9d4e88e
+Author: Adam <143958195+axm1647@users.noreply.github.com>
+Date:   Thu May 7 01:03:58 2026 +0100
+
+    chore: bump version number
+
+[33mcommit 9d4e88ee41cc38ede9a3bdf9cee6c37c9564f308[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Thu May 7 01:02:58 2026 +0100
+
+    feat(cache): scope get/put storage and Redis keys by model key
+
+[33mcommit dad6f4d77dcc6dd228aa6773ceaac6eeef0a8af8[m
+Merge: 229ae4a f6898be
+Author: Adam <143958195+axm1647@users.noreply.github.com>
+Date:   Wed May 6 06:49:44 2026 +0100
+
+    Merge pull request #18 from axm1647/develop
+    
+    Fix in-flight lock registry with LRU unlocked eviction
+
+[33mcommit f6898bef361934571ad893a00deeb927fccbb3c9[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Wed May 6 06:48:52 2026 +0100
+
+    chore: bump version number
+
+[33mcommit f15bbf17fc50c9089767a41d201576ef49ffb33b[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Wed May 6 06:48:14 2026 +0100
+
+    fix(middleware): bound in-flight lock registry with LRU unlocked eviction
+
+[33mcommit 229ae4a464c36846627d7b9a1b1c8eaa20af3ff8[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Wed May 6 05:12:36 2026 +0100
+
+    docs: clarify embedder types and custom BaseEmbedder in .env.example
+
+[33mcommit 1bea0322454cbfcbcb1f7fcee7636e24e97ff644[m
+Merge: d87c7b0 9848f0f
+Author: Adam <143958195+axm1647@users.noreply.github.com>
+Date:   Wed May 6 05:07:04 2026 +0100
+
+    Merge pull request #17 from axm1647/develop
+    
+    feat(cache): add configurable embed and store timeouts with timeout observability
+
+[33mcommit 9848f0fb22a9842a1c503847fdff46514293d966[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Wed May 6 05:05:24 2026 +0100
+
+    feat(cache): add configurable embed and store timeouts with timeout observability
+
+[33mcommit d87c7b022fdf8b7d88b366bccd55ab3f54980f5a[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Wed May 6 04:49:10 2026 +0100
+
+    style(stores/vector): refactor with black
+
+[33mcommit f32fba0ff5e5e3142f8fa10e36bbde0c83c74b42[m
+Merge: 8f4b782 6c729d8
+Author: Adam <143958195+axm1647@users.noreply.github.com>
+Date:   Wed May 6 04:47:41 2026 +0100
+
+    Merge pull request #16 from axm1647/develop
+    
+    refactor(middleware): migrate SemanticCacheMiddleware to pure ASGI
+
+[33mcommit 6c729d86022b232d4b00b20d6e4555a5334477c1[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Wed May 6 04:44:07 2026 +0100
+
+    refactor(middleware): migrate SemanticCacheMiddleware to pure ASGI
+
+[33mcommit 8f4b7823a1c15b8f69e33cc4852d91c4ee4a2a2f[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Tue May 5 20:34:54 2026 +0100
+
+    docs(readme): revise README.md
+
+[33mcommit 990828b527bea53ecab8a222fc7c0270cb08e3fb[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Tue May 5 20:01:55 2026 +0100
+
+    docs(cache): document two-stage retrieval and tuning options
+
+[33mcommit 81392ae773186a447729064a68c01d112dfca7c9[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Tue May 5 17:57:54 2026 +0100
+
+    docs(readme): document two-stage retrieval
+
+[33mcommit 38a1c4df8e9178f69aafe628feb224123708eb6f[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Tue May 5 17:48:46 2026 +0100
+
+    feat(cache): add two-stage retrieval tests for rejection threshold
+
+[33mcommit 98ec50eac993d784b84613c0041393cbaed91729[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Tue May 5 17:46:57 2026 +0100
+
+    feat(cache): add two-stage top-k retrieval with rejection threshold
+
+[33mcommit 13a2adadaed6056f619f15f8b83fd81af52169f3[m
+Author: a-m1647 <ackey1522@gmail.com>
+Date:   Tue May 5 15:25:14 2026 +0100
+
+    chore: add top_k_candidates field to CacheSettings
+
+[33mcommit 5f5db95e9aa507bb36ca385566c08d7e89edac95[m
+Author: a-m1647 <ackey1522@gmail.com>
+Date:   Tue May 5 15:05:58 2026 +0100
+
+    feat(proxy): add configurable flag to hide proxy app doc urls
+
+[33mcommit e449c8e4e9ac865bb08d78d6c9a758b2053d7779[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Tue May 5 13:09:30 2026 +0100
+
+    chore(env): clarify redis uri whitespace behaviour
+
+[33mcommit d3322f23e9928a6df4d69b86277d782839bed734[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Tue May 5 13:07:59 2026 +0100
+
+    feat(config): disable redis by default and clarify redis optionality in README
+
+[33mcommit 5359b5b319af5ae3374e9f4f2a4c92720a61f5dd[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Tue May 5 12:37:46 2026 +0100
+
+    refactor(middleware): replace StreamingResponse cast with isinstance guard
+
+[33mcommit 5110a7de219f172672b83ce415532b921d318cf8[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Tue May 5 01:18:58 2026 +0100
+
+    tests(openai): add stub integration test file
+
+[33mcommit 690b2188b7a5955caff93ad2b53d308adc836080[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Tue May 5 01:17:15 2026 +0100
+
+    docs: add CONTRIBUTING guide for dev setup, tests, and PRs
+
+[33mcommit ac735f1545e9e5f25874975d66238b69d8660880[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Tue May 5 00:54:11 2026 +0100
+
+    docs(readme): document FastAPI middleware
+
+[33mcommit 395bc25f0bd410965373444ac3b5f4868ddc99d9[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Tue May 5 00:42:36 2026 +0100
+
+    docs(readme): document streaming limits and planned chunked responses
+
+[33mcommit 3d8b10e9a70fd3f0d02cc4f66f428293a27d0052[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Tue May 5 00:33:18 2026 +0100
+
+    fix(config): add guards to validate configurable cosine similarity threshold
+
+[33mcommit 8e7a923d5acbf9b06272511389d7821048065c62[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Tue May 5 00:27:55 2026 +0100
+
+    test(proxy): add proxy app routing and startup tests
+
+[33mcommit 14ce18f87206ba325b04af87691c6c85558bb385[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Mon May 4 23:57:29 2026 +0100
+
+    test(cache): add SemanticCache unit tests for get, put, and embedder edge cases
+
+[33mcommit f5fd47f19b582d04b76dc2b546a13619aaebf1c9[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Mon May 4 23:20:48 2026 +0100
+
+    chore(tests): remove unused test files
+
+[33mcommit 189b74b62258dfe846d26416a52f3593b171ccd3[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Mon May 4 23:03:17 2026 +0100
+
+    chore(pyproject): update keywords
+
+[33mcommit 3e76db3ad924ca0545bd6d7c536a2b52c03f3c01[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Mon May 4 23:02:18 2026 +0100
+
+    docs(embedders): add details on the send_diamensions_to_api param in OpenAIEmbedder
+
+[33mcommit 7aa947e96f35fa79e22dac2035ef030986903360[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Mon May 4 22:45:49 2026 +0100
+
+    tests(embedders): tests(embedders): add OpenAIEmbedder tests for dimensions flag and import hint
+
+[33mcommit 6ab29fe9b501c5949bd698063615d4a9ccfb9862[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Mon May 4 22:24:09 2026 +0100
+
+    tests(embedders): add get_embedder and CacheSettings embedder tests
+
+[33mcommit ee91fc0e607c35e7fce65e92d468cb3ce0287cd6[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Mon May 4 22:07:35 2026 +0100
+
+    docs: apply Google-style docstrings
+
+[33mcommit e992ab87052d44fe89bbf4171e7f3ce7db12128c[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Mon May 4 11:56:42 2026 +0100
+
+    chore: rename PyPI package to fastapi-semcache
+    Keep the semanticcache import package
+
+[33mcommit 2657a308c26e9a311ea659530c7db884044bcf47[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Mon May 4 11:09:08 2026 +0100
+
+    docs: document custom embedders and core-only install
+
+[33mcommit beb8c80064c908a87b6f89aea2b7cf98ba0f783d[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Mon May 4 10:49:45 2026 +0100
+
+    docs: add empty embedders.md
+
+[33mcommit 0598b0280ace52191b3affbbc24fedc7026f1e8e[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Mon May 4 10:28:16 2026 +0100
+
+    style: refactor with black
+
+[33mcommit f06b354ff085a2fa5cc59cb65ce5017c387f0892[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Mon May 4 10:26:26 2026 +0100
+
+    feat(middleware): optional 429 circuit breaker from CacheSettings
+
+[33mcommit e2173d3d0837a4eb8b9816178a539c73253f9d58[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Mon May 4 09:49:21 2026 +0100
+
+    feat(middleware): fail-open on cache.get errors with X-Cache-Error
+
+[33mcommit a302ec4d127186289a01c827b020946bd0f31660[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Mon May 4 08:19:08 2026 +0100
+
+    docs(readme): change claim from no refactoring needed to minimal refactoring needed
+
+[33mcommit 578de1e1f879a02a4d5b81f3593d945182e2be9f[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Mon May 4 08:04:17 2026 +0100
+
+    build: refresh lock file
+
+[33mcommit f564a12d99515cf907e355883f3242e473ec8ec4[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Mon May 4 07:59:36 2026 +0100
+
+    fix(config): uncache get_cache_settings
+
+[33mcommit 6624f4e95174037d616e7417dde5bbb97b39a97c[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Mon May 4 07:40:05 2026 +0100
+
+    fix(config): set env_file=None so CacheSettings never loads dotenv
+
+[33mcommit 0bda5365e3bb5191a81b7c8194dcf6a298334924[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Mon May 4 07:28:29 2026 +0100
+
+    fix(proxy): return generic 502 without leaking upstream errors to clients
+
+[33mcommit 497ba3f3c20275767f044c608d433691e00d0400[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Mon May 4 07:27:10 2026 +0100
+
+    refactor(embedders): raise NotSupportedEmbedderException instead of NotImplementedError for consistency
+
+[33mcommit 526ea93805f24cfbb66d6953ae4adcb1bf238115[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Mon May 4 07:22:55 2026 +0100
+
+    build(deps): use slim fastapi; add optional server extra
+
+[33mcommit 576273e0560ba882c9934bff5e1c9b3cebc81789[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Mon May 4 07:18:45 2026 +0100
+
+    fix(embedders/voyage): remove unintended raise NotImplementedError() in VoyageEmbedder
+
+[33mcommit 306f0afce96535607b70c4e9b67779f824347042[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Mon May 4 07:12:23 2026 +0100
+
+    feat(embedders)!: rename local to huggingface; extend source types and Ollama config
+
+[33mcommit 2dd002313416404de4ecaf0d1a5bb8e4c09137da[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Mon May 4 06:47:28 2026 +0100
+
+    docs(readme): add note for future support of models on ollama
+
+[33mcommit 9f28d6ca9170ee623f13cb60e24df0062555136a[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Mon May 4 06:15:33 2026 +0100
+
+    docs(readme): mention planned Flask and Django middlewares
+
+[33mcommit ebad317010ffc92e2f5de95b890e701ba026bb5e[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Mon May 4 06:02:56 2026 +0100
+
+    test(embedders): add SBERT unit and integration suites
+
+[33mcommit 7c470b893a03c5552c2253f3a1b392e692b21689[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Mon May 4 05:33:08 2026 +0100
+
+    feat(config): add Cohere and Voyage embedder options and API key settings
+
+[33mcommit fd40eb6611291b058395dc9df58115999bad3920[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Mon May 4 04:52:05 2026 +0100
+
+    docs: add OpenAI embed extra install to README
+
+[33mcommit 05e93835123f33aadc02e801b1652cf40894ac41[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Mon May 4 04:48:07 2026 +0100
+
+    docs(env): add SEMANTIC_CACHE_PROXY_UPSTREAM to .env.example
+
+[33mcommit afb4128a5feea2c1777bc71bb0051c79988c9f18[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Mon May 4 04:38:04 2026 +0100
+
+    style: reformat with black
+
+[33mcommit 69cfe3309e71c7461cbd6674094ce2e426269f70[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Mon May 4 04:32:34 2026 +0100
+
+    docs(examples): complete standalone proxy example with settings and run defaults
+
+[33mcommit 112f5c7a44f2596baeb95f976dda2a5e69d1002c[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Mon May 4 04:29:42 2026 +0100
+
+    feat(embedders): subclass CohereEmbedder from OpenAIEmbedder
+
+[33mcommit 35cb396d8a303e3d066f8823faa52a7a57b2c8ec[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Mon May 4 04:25:39 2026 +0100
+
+    feat(embedders): pass Hugging Face token from cache settings into SBERT
+
+[33mcommit 0b54fd73ebfef4f3f796c0d37b7dd6f4234d7d7d[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Mon May 4 04:22:10 2026 +0100
+
+    feat(config): add Hugging Face and OpenAI API key settings with env aliases
+
+[33mcommit 436fe39b36c5c07a7cae02dc31506c19015e7073[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Mon May 4 04:14:31 2026 +0100
+
+    chore(pyproject): update deescription
+
+[33mcommit ab45d672693db2a08df5cd25331e8e016e802727[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Mon May 4 04:09:50 2026 +0100
+
+    docs(readme): update project description
+
+[33mcommit 17fa879d4db04fe542ee69d27f7efa51098bbb6f[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Mon May 4 04:08:55 2026 +0100
+
+    feat(embedders): implement OpenAIEmbedder
+
+[33mcommit ca14a8c733c51a43fe77859b71f410763f10ed65[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Mon May 4 03:37:57 2026 +0100
+
+    chore(embedders/openai): remove unused type hinted variable
+
+[33mcommit 5848a84fb30e0fe56bd38e92af14773f6a1f8059[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Mon May 4 03:37:08 2026 +0100
+
+    feat(embedders/openai): default dimensions to 1536 and use InvalidEmbeddingDimensionException
+
+[33mcommit cc54bb15e88391dc029d3cbd3aa57c449cf1a7f4[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Mon May 4 03:31:49 2026 +0100
+
+    style: reformat with black
+
+[33mcommit 775733b56a94f4fb1d35fd64c038a0ce83e97b82[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Mon May 4 03:25:32 2026 +0100
+
+    feat(embedders): add embedding dimension exceptions and use in SBERT
+
+[33mcommit e5de98ca7571dd84b5e8526f7b865ffcff9c2f31[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Mon May 4 03:09:46 2026 +0100
+
+    feat(storage): create pgvector tables per embedder config and namespace Redis keys
+
+[33mcommit 1df2fc30d62114addaf16627c12fd7bf5c6174c9[m
+Author: a-m1647 <ackey1522@gmail.com>
+Date:   Mon May 4 00:31:58 2026 +0100
+
+    docs(readme): add section to include future embedding model support
+
+[33mcommit 27d8ae010b6569ff2997e9adb2fd226276edd0c4[m
+Author: a-m1647 <ackey1522@gmail.com>
+Date:   Mon May 4 00:28:21 2026 +0100
+
+    chore(embedders): add stub files for future embeddings providers
+
+[33mcommit df18584fefc52528da6f560cdcd7cf02efad64ad[m
+Author: a-m1647 <ackey1522@gmail.com>
+Date:   Mon May 4 00:15:37 2026 +0100
+
+    chore(embedders): add stub files for future support for embeddings models form Voyage and Cohere
+
+[33mcommit 5c45d638ca11ada5daf213d6e0c10b6dd5ffc4a6[m
+Author: a-m1647 <ackey1522@gmail.com>
+Date:   Mon May 4 00:09:47 2026 +0100
+
+    docs(examples): update proxy.py to have correct usage of the reverse proxy functionality
+
+[33mcommit 73184fd20a9356c7e17b73989118f08940b10239[m
+Author: a-m1647 <ackey1522@gmail.com>
+Date:   Mon May 4 00:01:13 2026 +0100
+
+    chore(embedders/openai): set unused imports variable names in not yet implemented OpenAIEmbedder class to `_`
+
+[33mcommit b1dbd207466b08e67f3ed4fe85dee0a7e32097d8[m
+Author: a-m1647 <ackey1522@gmail.com>
+Date:   Sun May 3 23:58:57 2026 +0100
+
+    chore: set pyright to strict in pyproject.toml
+
+[33mcommit 8fc221a52682728648dc3329641d0b21763198ca[m
+Author: a-m1647 <ackey1522@gmail.com>
+Date:   Sun May 3 23:48:58 2026 +0100
+
+    refactor(embedders): rename base.py to _base.py
+
+[33mcommit 64bc6291d37c732eb3a9c60e57dedc1ab0e02366[m
+Author: a-m1647 <ackey1522@gmail.com>
+Date:   Sun May 3 23:46:33 2026 +0100
+
+    style(app): reformat main.py with black
+
+[33mcommit 7081a4536fd8301ce459fec92bcd3d83994dd4df[m
+Author: a-m1647 <ackey1522@gmail.com>
+Date:   Sun May 3 23:42:34 2026 +0100
+
+    chore(embedders): update docstring to match current raise behaviour
+
+[33mcommit 4f665c7cc4beb7bc79c28c9396d8d44bb6fda342[m
+Author: a-m1647 <ackey1522@gmail.com>
+Date:   Sun May 3 23:39:22 2026 +0100
+
+    tests: scaffold out tests file structure
+
+[33mcommit 2f53c4112082023bdd864a838b73148bff5b3b2b[m
+Author: a-m1647 <ackey1522@gmail.com>
+Date:   Sun May 3 23:33:42 2026 +0100
+
+    chore(embedders/openai): implement stub openai embedder classes
+
+[33mcommit 4f89b52fffedc028d655717b1f3ed059d3fa8a42[m
+Author: a-m1647 <ackey1522@gmail.com>
+Date:   Sun May 3 23:02:07 2026 +0100
+
+    feat: add exceptions.py
+
+[33mcommit 0909ab77e07a1ac6c563f670778ddb60d6f482ae[m
+Author: a-m1647 <ackey1522@gmail.com>
+Date:   Sun May 3 22:54:45 2026 +0100
+
+    chore: add stub examples/middleware.py
+
+[33mcommit 7c670f050c162d06a03ded447da7fb51343fb1b8[m
+Author: a-m1647 <ackey1522@gmail.com>
+Date:   Sun May 3 22:53:52 2026 +0100
+
+    chore: add example docs for reverse proxy
+
+[33mcommit f95dc7d7352853066e77e8e16aa3a529a83649cd[m
+Author: a-m1647 <ackey1522@gmail.com>
+Date:   Sun May 3 22:28:20 2026 +0100
+
+    refactor(repo): update all 1st party imports to be relative and not absolute
+
+[33mcommit 97dc861bb56e847f5785353d36d31dc05e532477[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Sun May 3 05:18:58 2026 +0100
+
+    chore(test): add pytest conftest scaffold
+
+[33mcommit b30bdae37976f8d2ed223c77f19a2491039804c7[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Sun May 3 05:14:15 2026 +0100
+
+    chore(middleware): silence pyright linter warnings
+
+[33mcommit 5722f40c4d17dd261f036d2832622d8d0907428a[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Sun May 3 05:12:39 2026 +0100
+
+    fix(middleware): mark SemanticCacheMiddleware.dispatch with @override
+
+[33mcommit 2429b234364401f05c2c93895231a4ee86fea595[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Sun May 3 05:11:02 2026 +0100
+
+    fix(middleware): satisfy pyright for BaseHTTPMiddleware response body stream
+
+[33mcommit e95b7357f10d4438a119e2b657d331b934bdab30[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Sun May 3 05:09:23 2026 +0100
+
+    fix(middleware): store JSON cache entries without strict Content-Type and for 2xx responses
+
+[33mcommit ba8d578be2e9f58eb89531f1b3e7d7685db6be77[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Sun May 3 04:42:37 2026 +0100
+
+    feat(middleware): serialize concurrent cache misses per query with double-checked get
+
+[33mcommit 3806291b949b1e7da3c4e2bf5cfa30040348e351[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Sun May 3 04:28:51 2026 +0100
+
+    chore: update version
+
+[33mcommit 6bc7b3522336369016d6d1fa218efe9826828162[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Sun May 3 04:27:25 2026 +0100
+
+    docs(readme): update README.md
+
+[33mcommit 2a18f897778338c907a83dc2380b0cf2422377d2[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Sun May 3 03:52:22 2026 +0100
+
+    chore(release): bump version to 0.2.0
+
+[33mcommit 3b520cdd8b529e6b1c1bc62a851a485102068d6f[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Sun May 3 03:40:23 2026 +0100
+
+    chore(deps): add httpx and document reverse proxy in README
+
+[33mcommit c35853189a15467f319c49526fee89ae56c0b051[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Sun May 3 03:39:25 2026 +0100
+
+    feat(app): add FastAPI ASGI entrypoint for semantic cache proxy
+    Wire ProxyAppSettings (SEMANTIC_CACHE_PROXY_*), build the proxy app via
+    create_semantic_cache_proxy_app, and chain lifespan to close SemanticCache
+    on shutdown.
+
+[33mcommit 630fc495165f12359ad6a856a0c59a8b88ac891f[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Sun May 3 03:38:56 2026 +0100
+
+    feat(semanticcache): add FastAPI reverse proxy with semantic caching
+    
+    Introduce create_semantic_cache_proxy_app (httpx forwarding, hop-by-hop
+    header stripping, SemanticCacheMiddleware) and export it from the package.
+
+[33mcommit b2dabc164bc34f9ee3c0c6a178ead451977e2f17[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Sun May 3 03:26:02 2026 +0100
+
+    docs(README): update README.md
+
+[33mcommit 05356ea5b355d59f7dc5e99d992eda1bb289345e[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Sun May 3 03:19:34 2026 +0100
+
+    feat(deps): add embed-local-cpu and embed-local-gpu extras with explicit torch
+
+[33mcommit 9a59f44118474f743f105f1b83d47eb90f1fc213[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Sun May 3 03:13:00 2026 +0100
+
+    style: reformat with black
+
+[33mcommit 21d646295113d81aaab3679404b395975e5ed61a[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Sun May 3 03:12:13 2026 +0100
+
+    fix(middleware): return upstream body when cache put fails after 200
+
+[33mcommit d7ad6f7db5de7f3a31161cf6188bef2ba1c5ef89[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Sun May 3 03:11:07 2026 +0100
+
+    scripts: add publish.sh
+
+[33mcommit afd86c05a7dbed3e5cb10ff03695d8cb36cba69b[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Sun May 3 03:10:32 2026 +0100
+
+    feat(middleware): add FastAPI semantic cache middleware
+    
+    Add Starlette BaseHTTPMiddleware integration with SemanticCache, JSON body query extraction (prompt/messages shapes), and package exports.
+
+[33mcommit 02d5db962f501cae5f1ef141a5d7a89f9519dffb[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Sun May 3 02:55:16 2026 +0100
+
+    feat(cache): implement SemanticCache with pgvector and optional Redis
+
+[33mcommit c6197fdb55ec81cb5946ad6a14485eb989708b7e[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Sun May 3 02:49:00 2026 +0100
+
+    style: reformat with black
+
+[33mcommit c621ff6dbd54ba51b5a5be957ec13ef6ed77647c[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Sun May 3 02:47:08 2026 +0100
+
+    chore(config): set pydantic extra="ignore" on CacheSettings
+
+[33mcommit 0c04575c197db794f2ad36f773631a0210c98347[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Sun May 3 02:40:35 2026 +0100
+
+    feat(packaging): rename PyPI distribution to semanticcache-py
+    
+    Add setuptools build metadata, package keywords/classifiers, project URLs,
+    README install docs, and lockfile refresh.
+
+[33mcommit dd15fc0a93cb3f5f3daa5aabbec7536199365660[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Sun May 3 02:36:24 2026 +0100
+
+    chore(embedders): update docstring to use correct install name
+
+[33mcommit 06c129500d0da4405ac5b3a810308f4730837734[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Sun May 3 02:31:16 2026 +0100
+
+    chore: silence pyright warning
+
+[33mcommit c091e1cd45347f124a36de44c5be3482c5eaa610[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Sun May 3 02:08:09 2026 +0100
+
+    chore: update LICENSE
+
+[33mcommit 281e7ff4d16e68a803e4c0fba9048270947ff104[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Sun May 3 02:05:53 2026 +0100
+
+    feat(stores): add AsyncPgVectorStore and RedisResponseStore
+    
+    Async pgvector upsert/similarity search and Redis JSON get/put.
+
+[33mcommit 67f7fc7b1b53d8a11ebb63d3e10527545a1d0122[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Sun May 3 02:05:27 2026 +0100
+
+    feat(config): add CacheEntry and redis_ttl_seconds
+    
+    Extend settings for Redis TTL.
+
+[33mcommit dfe862ac680b67231459f3f67cd1ce41c4f019ef[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Sun May 3 02:03:53 2026 +0100
+
+    chore(deps): add psycopg-pool and psycopg[binary]
+    
+    Refresh lockfile for new Postgres pool dependency.
+
+[33mcommit 0742328c5d1330b6741fbc765d38c3cab866c77a[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Sun May 3 01:52:54 2026 +0100
+
+    chore: add LICENSE file
+
+[33mcommit 90582c87ab8aa1872bf49007a605b6549fef4a31[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Sun May 3 01:40:30 2026 +0100
+
+    chore(cache): correct old type hint variable name
+
+[33mcommit e70da74c4cc8cfeabb2fc0eed7845c8f37810587[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Sun May 3 01:39:03 2026 +0100
+
+    chore(config): update default port from 5433 to 5432
+
+[33mcommit cd7bf3c92dbd845595c9153cb0fbf6eb3616ea4a[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Sun May 3 00:50:20 2026 +0100
+
+    feat(embedders): add BaseEmbedder and SBERTEmbedder with get_embedder factory
+
+[33mcommit 2cdea7a146e69006384fe0451c4930a91e43d334[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Sun May 3 00:49:20 2026 +0100
+
+    feat(config): migrate CacheSettings to SettingsConfigDict
+
+[33mcommit a594abaf25c75c751bafe1906e9b2bce6104037c[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Thu Apr 30 09:16:58 2026 +0100
+
+    refactor(types): tighten CacheResult typing and remove Any suppressions
+
+[33mcommit 8388b720d88de2bdd6cb7b4f614768cfc66e20a7[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Thu Apr 30 09:13:00 2026 +0100
+
+    chore(config): add type hint
+
+[33mcommit dd4ef7003a2815c07955227fd208575079ea71c4[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Thu Apr 30 09:10:05 2026 +0100
+
+    feat: load cache defaults from environment settings
+
+[33mcommit 9b8e9a82d7f87ce2438b1ba4148bf24a84f876c1[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Thu Apr 30 08:58:10 2026 +0100
+
+    feat(semanticcache): scaffold core cache, config, types, and embedder modules
+
+[33mcommit f2e5e120eafcc2da97276f905d0213fbe94d1230[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Thu Apr 30 08:43:08 2026 +0100
+
+    feat(docker): add local Redis/Postgres services with pgvector cache schema
+
+[33mcommit bb964270a745b1bc0fd5c7ebe7f154bd51661476[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Thu Apr 30 08:33:05 2026 +0100
+
+    chore(deps): refresh lockfile
+
+[33mcommit eae9a2d1cd65276ed1b01f702b01bdb2ff74828f[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Thu Apr 30 08:25:24 2026 +0100
+
+    chore: scaffold out project file structure
+
+[33mcommit 99212b959f7250ab5bbdd59d5d855eaef55b5a7e[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Thu Apr 30 08:11:17 2026 +0100
+
+    chore: add Python gitignore
+
+[33mcommit 75fea8eaf824ce70c49f137ba1cbbd93a44ffe00[m
+Author: axm1647 <ackey1522@gmail.com>
+Date:   Thu Apr 30 08:07:48 2026 +0100
+
+    first commit
