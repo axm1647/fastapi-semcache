@@ -10,7 +10,6 @@ import asyncio
 from typing import cast, final, override
 
 from ..exceptions import EmbeddingDimensionUnavailableException
-from ..config import get_cache_settings
 from ._base import BaseEmbedder
 
 
@@ -52,6 +51,7 @@ class SBERTEmbedder(BaseEmbedder):
         model_name: str = "sentence-transformers/all-MiniLM-L6-v2",
         *,
         normalize_embeddings: bool = True,
+        token: str | None = None,
     ) -> None:
         """Load a SentenceTransformer model.
 
@@ -60,12 +60,12 @@ class SBERTEmbedder(BaseEmbedder):
                 ``SentenceTransformer``.
             normalize_embeddings: When True, L2-normalize vectors (recommended for
                 cosine similarity with pgvector ``vector_cosine_ops``).
+            token: Optional Hugging Face API key for private models and
+                rate-limited access.
         """
         SentenceTransformer = _require_sentence_transformers()
         self._model_name = model_name
-        self._model = SentenceTransformer(
-            model_name, token=get_cache_settings().hugging_face_api_key
-        )  # optional Hugging Face API key for private models and rate limiting
+        self._model = SentenceTransformer(model_name, token=token)
         self._normalize_embeddings: bool = normalize_embeddings
 
     @property

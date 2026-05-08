@@ -42,6 +42,10 @@ cache = SemanticCache(embedder=MyEmbedder(...), settings=get_cache_settings())
 
 Optional: pass **`embedding_dim=`** to assert it matches `embedder.embedding_dim` (a mismatch raises **`ValueError`**).
 
+When you use the built-in Hugging Face backend through `get_embedder(settings)`,
+`SBERTEmbedder` receives the token from `settings.hugging_face_api_key`.
+`SBERTEmbedder` does not re-read global settings on its own.
+
 ### `CacheResult.source` and settings
 
 `CacheResult.source` is still derived from **`CacheSettings.embedder_type`** (environment **`SEMANTIC_CACHE_EMBEDDER_TYPE`**) for hits and misses, not from your custom class. If you rely on that field for metrics, either align `embedder_type` with how you want logs labeled or treat `source` as configuration metadata only when using a custom embedder.
