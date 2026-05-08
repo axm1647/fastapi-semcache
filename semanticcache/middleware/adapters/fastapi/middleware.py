@@ -54,6 +54,7 @@ from ...core.replay import (
 if TYPE_CHECKING:
     from ....config import CacheSettings
 
+
 class SemanticCacheMiddleware:
     """Intercept requests, serve semantic cache hits, and populate the cache on miss.
 
