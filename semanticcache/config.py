@@ -116,6 +116,28 @@ class CacheSettings(BaseSettings):
             "SEMANTIC_CACHE_VOYAGE_API_KEY",
         ),
     )
+    voyage_embedding_model: str | None = Field(
+        default=None,
+        description=(
+            "Voyage embedding model id; used when embedder_type is voyage. "
+            "Defaults to 'voyage-3' when unset."
+        ),
+    )
+    voyage_embedding_dimensions: int | None = Field(
+        default=None,
+        ge=1,
+        description=(
+            "Embedding vector width for the configured Voyage model; used when "
+            "embedder_type is voyage. Defaults to 1024 when unset."
+        ),
+    )
+    voyage_input_type: str | None = Field(
+        default=None,
+        description=(
+            "Optional Voyage input_type hint sent with each embed request. "
+            "Options: None, 'query', 'document'. Used when embedder_type is voyage."
+        ),
+    )
     ollama_api_key: str | None = Field(
         default=None,
         description="Ollama API key",

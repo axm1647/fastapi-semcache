@@ -8,6 +8,7 @@ from ._base import BaseEmbedder
 from .ollama import OllamaEmbedder
 from .openai import OpenAIEmbedder
 from .sbert import SBERTEmbedder
+from .voyage import VOYAGE_DEFAULT_DIMENSIONS, VOYAGE_DEFAULT_MODEL, VoyageEmbedder
 
 
 def get_embedder(settings: CacheSettings | None = None) -> BaseEmbedder:
@@ -30,7 +31,12 @@ def get_embedder(settings: CacheSettings | None = None) -> BaseEmbedder:
     if resolved.embedder_type == "cohere":
         raise NotSupportedEmbedderException("Cohere embeddings are not supported yet.")
     if resolved.embedder_type == "voyage":
-        raise NotSupportedEmbedderException("Voyage embeddings are not supported yet.")
+        return VoyageEmbedder(
+            model_name=resolved.voyage_embedding_model or VOYAGE_DEFAULT_MODEL,
+            dimensions=resolved.voyage_embedding_dimensions or VOYAGE_DEFAULT_DIMENSIONS,
+            input_type=resolved.voyage_input_type,
+            api_key=resolved.voyage_api_key,
+        )
     if resolved.embedder_type == "ollama":
         model = resolved.ollama_embedding_model
         dims = resolved.ollama_embedding_dimensions
@@ -50,7 +56,8 @@ def get_embedder(settings: CacheSettings | None = None) -> BaseEmbedder:
 __all__: list[str] = [
     "BaseEmbedder",
     "OllamaEmbedder",
-    "SBERTEmbedder",
-    "get_embedder",
     "OpenAIEmbedder",
+    "SBERTEmbedder",
+    "VoyageEmbedder",
+    "get_embedder",
 ]

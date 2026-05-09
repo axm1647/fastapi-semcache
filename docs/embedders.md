@@ -160,6 +160,69 @@ ada = OpenAIEmbedder(
 
 For **`text-embedding-3-small`** / **`text-embedding-3-large`**, the default **`send_dimensions_to_api=True`** is appropriate when you want a reduced **output** width (as supported by that model family).
 
+## VoyageEmbedder (`embed-voyage`)
+
+**`VoyageEmbedder`** (optional extra **`embed-voyage`**) sends embedding requests asynchronously to `https://api.voyageai.com/v1/embeddings` using **`aiohttp`**, as recommended by Voyage for async workloads. Before each batch, it validates inputs locally via **`voyageai.Client.tokenize`** (which uses Voyage's Hugging Face tokenizer - no network call).
+
+Install with:
+
+```bash
+pip install 'fastapi-semcache[embed-voyage]'
+```
+
+### Constructor
+
+```python
+VoyageEmbedder(
+    model_name="voyage-3",
+    *,
+    dimensions=1024,
+    output_dimension=None,
+    input_type=None,
+    api_key=None,
+)
+```
+
+- **`model_name`**: Voyage model id. Recommended: `voyage-4-large`, `voyage-4`, `voyage-4-lite`, `voyage-3`, `voyage-3.5`, `voyage-code-3`. Defaults to `voyage-3`.
+- **`dimensions`**: Storage and validation width. Must match the model's actual output (or `output_dimension` when set).
+- **`output_dimension`**: When set, passed as `output_dimension` in the API request. Only supported by `voyage-4-*`, `voyage-3-large`, `voyage-3.5*`, and `voyage-code-3` (valid values: 256, 512, 1024, 2048). When used, set `dimensions` to the same value.
+- **`input_type`**: Optional hint: `None`, `"query"`, or `"document"`. Use `"document"` when indexing content, `"query"` for lookup to improve retrieval accuracy. Passed directly to the API.
+- **`api_key`**: Voyage API key. Defaults to the `VOYAGE_API_KEY` environment variable when omitted.
+
+### Example
+
+```python
+from semanticcache import SemanticCache, get_cache_settings
+from semanticcache.embedders import VoyageEmbedder
+
+cache = SemanticCache(
+    embedder=VoyageEmbedder(
+        model_name="voyage-4-large",
+        dimensions=1024,
+        input_type="document",
+        api_key=get_cache_settings().voyage_api_key,
+    ),
+    settings=get_cache_settings(),
+)
+```
+
+### Through `get_embedder`
+
+Set `SEMANTIC_CACHE_EMBEDDER_TYPE=voyage`. The following environment variables configure the factory path:
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `VOYAGE_API_KEY` / `SEMANTIC_CACHE_VOYAGE_API_KEY` | `None` | API key |
+| `SEMANTIC_CACHE_VOYAGE_EMBEDDING_MODEL` | `voyage-3` | Model id |
+| `SEMANTIC_CACHE_VOYAGE_EMBEDDING_DIMENSIONS` | `1024` | Vector width |
+| `SEMANTIC_CACHE_VOYAGE_INPUT_TYPE` | `None` | `query`, `document`, or unset |
+
+### Notes
+
+- The `aiohttp.ClientSession` is created lazily on the first `embed()` call and shared across all requests.
+- Token validation via `voyageai.Client.tokenize` is a local CPU operation - it loads the model's Hugging Face tokenizer on first call.
+- Batches are capped at 1,000 texts per request (Voyage's documented hard limit).
+
 ## OllamaEmbedder (`embed-ollama`)
 
 **`OllamaEmbedder`** uses the official **`openai`** **`AsyncOpenAI`** client against Ollama’s **OpenAI-compatible** embeddings endpoint (configure **`base_url`** with the **`/v1`** suffix, for example **`http://127.0.0.1:11434/v1`**). Install **`fastapi-semcache[embed-ollama]`**.
