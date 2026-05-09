@@ -5,6 +5,7 @@
 from ..config import CacheSettings, get_cache_settings
 from ..exceptions import NotSupportedEmbedderException
 from ._base import BaseEmbedder
+from .ollama import OllamaEmbedder
 from .openai import OpenAIEmbedder
 from .sbert import SBERTEmbedder
 
@@ -31,7 +32,15 @@ def get_embedder(settings: CacheSettings | None = None) -> BaseEmbedder:
     if resolved.embedder_type == "voyage":
         raise NotSupportedEmbedderException("Voyage embeddings are not supported yet.")
     if resolved.embedder_type == "ollama":
-        raise NotSupportedEmbedderException("Ollama embeddings are not supported yet.")
+        model = resolved.ollama_embedding_model
+        dims = resolved.ollama_embedding_dimensions
+        assert model is not None and dims is not None
+        return OllamaEmbedder(
+            model_name=model,
+            dimensions=dims,
+            api_key=resolved.ollama_api_key,
+            base_url=resolved.ollama_base_url,
+        )
     raise NotSupportedEmbedderException(
         "This embeddings option is not supported. "
         "Please check README for available embedding options."
@@ -40,6 +49,7 @@ def get_embedder(settings: CacheSettings | None = None) -> BaseEmbedder:
 
 __all__: list[str] = [
     "BaseEmbedder",
+    "OllamaEmbedder",
     "SBERTEmbedder",
     "get_embedder",
     "OpenAIEmbedder",
