@@ -237,7 +237,7 @@ wheels = [
 
 [[package]]
 name = "fastapi-semcache"
-version = "0.2.16"
+version = "0.2.18"
 source = { editable = "." }
 dependencies = [
     { name = "fastapi" },
@@ -245,7 +245,6 @@ dependencies = [
     { name = "psycopg", extra = ["binary"] },
     { name = "psycopg-pool" },
     { name = "pydantic-settings" },
-    { name = "redis" },
 ]
 
 [package.optional-dependencies]
@@ -265,6 +264,9 @@ embed-openai = [
     { name = "openai" },
     { name = "tiktoken" },
 ]
+redis = [
+    { name = "redis" },
+]
 test = [
     { name = "numpy" },
     { name = "pytest" },
@@ -282,7 +284,7 @@ requires-dist = [
     { name = "pydantic-settings", specifier = ">=2.14.0" },
     { name = "pytest", marker = "extra == 'test'", specifier = ">=8.0" },
     { name = "pytest-asyncio", marker = "extra == 'test'", specifier = ">=0.24" },
-    { name = "redis", specifier = ">=7.4.0" },
+    { name = "redis", marker = "extra == 'redis'", specifier = ">=7.4.0" },
     { name = "sentence-transformers", marker = "extra == 'embed-huggingface'", specifier = ">=3.0" },
     { name = "sentence-transformers", marker = "extra == 'embed-huggingface-cpu'", specifier = ">=3.0" },
     { name = "sentence-transformers", marker = "extra == 'embed-huggingface-gpu'", specifier = ">=3.0" },
@@ -291,7 +293,7 @@ requires-dist = [
     { name = "torch", marker = "extra == 'embed-huggingface-cpu'", specifier = ">=2.1.0" },
     { name = "torch", marker = "extra == 'embed-huggingface-gpu'", specifier = ">=2.1.0" },
 ]
-provides-extras = ["embed-huggingface-cpu", "embed-huggingface-gpu", "embed-huggingface", "embed-openai", "test"]
+provides-extras = ["redis", "embed-huggingface-cpu", "embed-huggingface-gpu", "embed-huggingface", "embed-openai", "test"]
 
 [[package]]
 name = "filelock"
