@@ -34,13 +34,19 @@ async def read_body(receive: Receive) -> bytes:
 async def call_downstream(app: ASGIApp, scope: Scope, body: bytes) -> Response:
     """Invoke downstream ASGI app and buffer its response.
 
+    This function always returns a plain, fully-buffered ``starlette.responses.Response``
+    whose ``.body`` attribute is a ``bytes`` object. Callers that access ``.body``
+    (e.g. ``prepare_response_for_client``) rely on this contract. Do not replace
+    the return type with ``StreamingResponse`` or any subclass that omits ``.body``.
+
     Args:
         app: Downstream ASGI application.
         scope: Current request ASGI scope.
         body: Full buffered request body.
 
     Returns:
-        Buffered Starlette response built from downstream ASGI messages.
+        Fully-buffered Starlette ``Response`` whose ``.body`` contains the
+        complete downstream response body as ``bytes``.
     """
     status_code = 500
     response_headers: dict[str, str] = {}

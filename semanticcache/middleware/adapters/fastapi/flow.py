@@ -186,7 +186,12 @@ def prepare_response_for_client(
         merge_response_headers(response, miss_headers)
         return (response, None)
 
-    buffered = bytes(response.body)
+    raw_body = getattr(response, "body", None)
+    if not isinstance(raw_body, bytes) or not raw_body:
+        merge_response_headers(response, miss_headers)
+        return (response, None)
+
+    buffered = raw_body
     try:
         payload: object = json.loads(buffered)
     except json.JSONDecodeError:
