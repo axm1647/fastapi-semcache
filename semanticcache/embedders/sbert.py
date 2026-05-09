@@ -59,7 +59,7 @@ class SBERTEmbedder(BaseEmbedder):
                 ``SentenceTransformer``.
             normalize_embeddings: When True, L2-normalize vectors (recommended for
                 cosine similarity with pgvector ``vector_cosine_ops``).
-            token: Optional Hugging Face API key for private models and
+            api_key: Optional Hugging Face API key for private models and
                 rate-limited access.
         """
         SentenceTransformer = _require_sentence_transformers()
