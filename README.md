@@ -25,8 +25,7 @@ pip install fastapi-semcache
 Optional extras:
 
 - `redis`: Async Redis client (`redis>=7.4.0`) for TTL-backed response blobs when **`SEMANTIC_CACHE_REDIS_URI`** is set. Core installs omit it so Postgres-only deployments avoid pulling Redis.
-- `embed-huggingface` / `embed-huggingface-cpu`: Sentence Transformers with **CPU** PyTorch.
-- `embed-huggingface-gpu`: Sentence Transformers with a CUDA-enabled PyTorch install.
+- `embed-huggingface`: Sentence Transformers and PyTorch. Default PyPI wheels are **CPU**; for CUDA, install with PyTorch's `--extra-index-url` ([below](#hugging-face--sentence-transformers)).
 - `embed-openai`: OpenAI embeddings (`openai`, `tiktoken`).
 - `embed-ollama`: Ollama embeddings via the OpenAI-compatible HTTP API (`openai` only).
 
@@ -36,19 +35,16 @@ Dependency notes:
 - Core does **not** include the `redis` PyPI package; use **`pip install "fastapi-semcache[redis]"`** whenever you configure a non-empty Redis URI (otherwise the first Redis use raises `ImportError` with an install hint).
 - Optional extras only add their listed packages (`redis`, `sentence-transformers`/`torch`, `openai`/`tiktoken`, or `openai` alone for `embed-ollama`).
 
-### CPU
+### Hugging Face / Sentence Transformers
 
 ```bash
-pip install "fastapi-semcache[embed-huggingface-cpu]"
-# or: pip install "fastapi-semcache[embed-huggingface]"
+pip install "fastapi-semcache[embed-huggingface]"
 ```
 
-### GPU
-
-Pick a CUDA version that matches your system from [PyTorch Get Started](https://pytorch.org/get-started/locally/), then install with that index so pip selects CUDA wheels.
+That pulls CPU PyTorch from PyPI. For **GPU (CUDA)**, use the same extra but pass PyTorch's wheel index so pip resolves CUDA builds. Pick a CUDA version that matches your system from [PyTorch Get Started](https://pytorch.org/get-started/locally/):
 
 ```bash
-pip install "fastapi-semcache[embed-huggingface-gpu]" \
+pip install "fastapi-semcache[embed-huggingface]" \
   --extra-index-url https://download.pytorch.org/whl/cu124
 ```
 
@@ -213,7 +209,7 @@ See `create_semantic_cache_proxy_app` in `semanticcache.proxy` for timeout, TLS 
 
 ## Streaming and chunked responses
 
-Today the middleware **buffers the full downstream response** before sending it to the client. That applies even when your route returns a streaming-style response (for example token streaming); the bytes are collected first, then returned as one response. Cached hits are served as ordinary JSON bodies. The reverse proxy uses httpx’s full response body, not a streamed upstream read.
+Today the middleware **buffers the full downstream response** before sending it to the client. That applies even when your route returns a streaming-style response (for example token streaming); the bytes are collected first, then returned as one response. Cached hits are served as ordinary JSON bodies. The reverse proxy uses httpx's full response body, not a streamed upstream read.
 
 **Chunked pass-through and streaming-friendly caching are planned** so SSE and similar flows can deliver early bytes while still integrating with semantic caching where feasible.
 

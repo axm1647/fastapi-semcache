@@ -26,11 +26,10 @@ def _require_sentence_transformers():
         from sentence_transformers import SentenceTransformer as ST
     except ImportError as exc:
         _missing = (
-            "SBERTEmbedder requires optional dependencies. CPU: pip install "
-            "'fastapi-semcache[embed-huggingface-cpu]'. GPU (CUDA PyTorch): pip install "
-            "'fastapi-semcache[embed-huggingface-gpu]' with --extra-index-url from "
-            "https://pytorch.org/get-started/locally/ (see README). Shorthand for "
-            "CPU: pip install 'fastapi-semcache[embed-huggingface]'."
+            "SBERTEmbedder requires optional dependencies: pip install "
+            "'fastapi-semcache[embed-huggingface]'. PyPI serves CPU PyTorch by default; "
+            "for CUDA, use the same extra with --extra-index-url from "
+            "https://pytorch.org/get-started/locally/ (see README)."
         )
         raise ImportError(_missing) from exc
     return ST

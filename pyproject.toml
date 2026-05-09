@@ -38,12 +38,9 @@ dependencies = [
     "pydantic-settings>=2.14.0",
 ]
 
-# embed-huggingface-cpu and embed-huggingface-gpu list the same packages. Pip pulls CPU PyTorch
-# wheels from PyPI by default. For CUDA builds, pass PyTorch's wheel index (README).
+# PyPI serves CPU torch wheels by default. For CUDA, install with PyTorch's index (README).
 [project.optional-dependencies]
 redis = ["redis>=7.4.0"]
-embed-huggingface-cpu = ["sentence-transformers>=3.0", "torch>=2.1.0"]
-embed-huggingface-gpu = ["sentence-transformers>=3.0", "torch>=2.1.0"]
 embed-huggingface = ["sentence-transformers>=3.0", "torch>=2.1.0"]
 embed-openai = ["openai>=1.40", "tiktoken>=0.7"]
 embed-ollama = ["openai>=1.40"]

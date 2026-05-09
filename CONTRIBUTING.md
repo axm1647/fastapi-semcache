@@ -35,7 +35,7 @@ Some tests live under `tests/embedders/test_sbert_integration.py` and are marked
 To run integration tests after installing an embedding extra (for example CPU Sentence Transformers):
 
 ```bash
-uv sync --extra embed-huggingface-cpu --extra test
+uv sync --extra embed-huggingface --extra test
 uv run pytest -m integration
 ```
 
