@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -38,7 +38,11 @@ def _make_embedder(
     """
     fake_voyageai = MagicMock()
     fake_aiohttp = MagicMock()
-    monkeypatch.setattr(voyage_mod, "_require_deps", lambda: (fake_voyageai, fake_aiohttp))
+    monkeypatch.setattr(
+        voyage_mod,
+        "_require_voyageai_and_aiohttp",
+        lambda: (fake_voyageai, fake_aiohttp),
+    )
 
     emb = VoyageEmbedder(
         model_name=model_name,
@@ -50,7 +54,9 @@ def _make_embedder(
     return emb, fake_voyageai, fake_aiohttp
 
 
-def test_require_deps_import_error_has_hint(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_require_voyageai_and_aiohttp_import_error_has_hint(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Missing packages surface an install extra hint."""
     import builtins
 

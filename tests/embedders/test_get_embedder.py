@@ -11,13 +11,9 @@ from semanticcache.embedders import get_embedder
 from semanticcache.exceptions import NotSupportedEmbedderException
 
 
-@pytest.mark.parametrize(
-    "embedder_type",
-    ("cohere", "voyage"),
-)
-def test_unsupported_types_raise(embedder_type: str) -> None:
-    """Types not yet implemented must raise a clear error."""
-    settings = CacheSettings.model_validate({"embedder_type": embedder_type})
+def test_cohere_embedder_raises_not_supported() -> None:
+    """Cohere backend is not implemented yet."""
+    settings = CacheSettings.model_validate({"embedder_type": "cohere"})
     with pytest.raises(NotSupportedEmbedderException):
         get_embedder(settings)
 
@@ -105,3 +101,75 @@ def test_ollama_embedder_constructed_from_settings(
     assert captured["dimensions"] == 1024
     assert captured["api_key"] == "k"
     assert captured["base_url"] == "http://embeddings.example:11434/v1"
+
+
+def test_voyage_embedder_constructed_from_settings(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Factory passes model, dimensions, input_type hint, and API key."""
+    captured: dict[str, object] = {}
+
+    class _TrackingVoyage:
+        """Capture constructor kwargs for factory wiring assertions."""
+
+        def __init__(
+            self,
+            model_name: str = "",
+            *,
+            dimensions: int = 0,
+            output_dimension: int | None = None,
+            input_type: str | None = None,
+            api_key: str | None = None,
+        ) -> None:
+            captured["model_name"] = model_name
+            captured["dimensions"] = dimensions
+            captured["output_dimension"] = output_dimension
+            captured["input_type"] = input_type
+            captured["api_key"] = api_key
+
+    monkeypatch.setattr(embedders_mod, "VoyageEmbedder", _TrackingVoyage)
+    settings = CacheSettings.model_validate(
+        {
+            "embedder_type": "voyage",
+            "voyage_embedding_model": "voyage-4-lite",
+            "voyage_embedding_dimensions": 512,
+            "voyage_input_type": "document",
+            "SEMANTIC_CACHE_VOYAGE_API_KEY": "vk",
+        }
+    )
+    _ = get_embedder(settings)
+    assert captured["model_name"] == "voyage-4-lite"
+    assert captured["dimensions"] == 512
+    assert captured["input_type"] == "document"
+    assert captured["api_key"] == "vk"
+
+
+def test_voyage_embedder_factory_uses_defaults_when_model_and_dims_unset(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Unset voyage model and dimensions fall back to library defaults."""
+    captured: dict[str, object] = {}
+
+    class _TrackingVoyage:
+        """Capture constructor kwargs for factory wiring assertions."""
+
+        def __init__(
+            self,
+            model_name: str = "",
+            *,
+            dimensions: int = 0,
+            input_type: str | None = None,
+            api_key: str | None = None,
+        ) -> None:
+            captured["model_name"] = model_name
+            captured["dimensions"] = dimensions
+            captured["input_type"] = input_type
+            captured["api_key"] = api_key
+
+    monkeypatch.setattr(embedders_mod, "VoyageEmbedder", _TrackingVoyage)
+    settings = CacheSettings.model_validate({"embedder_type": "voyage"})
+    _ = get_embedder(settings)
+    assert captured["model_name"] == embedders_mod.VOYAGE_DEFAULT_MODEL
+    assert captured["dimensions"] == embedders_mod.VOYAGE_DEFAULT_DIMENSIONS
+    assert captured["input_type"] is None
+    assert captured["api_key"] is None
