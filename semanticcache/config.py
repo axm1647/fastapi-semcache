@@ -40,8 +40,9 @@ class CacheSettings(BaseSettings):
         default=None,
         description=(
             "Optional second-stage similarity threshold used to reject borderline "
-            "matches after initially fetching top_k_candidates. When unset, "
-            "threshold alone controls cache hits."
+            "matches after initially fetching top_k_candidates. Must be >= "
+            "threshold when set, or validation fails. When unset, threshold alone "
+            "controls cache hits."
         ),
         ge=0.0,
         le=1.0,
@@ -203,7 +204,10 @@ class CacheSettings(BaseSettings):
         """
         if self.embedder_type != "ollama":
             return self
-        if self.ollama_embedding_model is None or not self.ollama_embedding_model.strip():
+        if (
+            self.ollama_embedding_model is None
+            or not self.ollama_embedding_model.strip()
+        ):
             msg = (
                 "ollama_embedding_model is required when embedder_type is 'ollama' "
                 "(set SEMANTIC_CACHE_OLLAMA_EMBEDDING_MODEL)."
@@ -213,6 +217,30 @@ class CacheSettings(BaseSettings):
             msg = (
                 "ollama_embedding_dimensions is required when embedder_type is "
                 "'ollama' (set SEMANTIC_CACHE_OLLAMA_EMBEDDING_DIMENSIONS)."
+            )
+            raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _validate_rejection_threshold_vs_primary(self) -> CacheSettings:
+        """Ensure the rejection gate can filter stage-1 candidates when enabled.
+
+        Returns:
+            Unchanged settings when validation passes.
+
+        Raises:
+            ValueError: When ``rejection_threshold`` is set but lower than
+                ``threshold`` (second stage could not reject any stage-1 hit).
+        """
+        if self.rejection_threshold is None:
+            return self
+        if self.rejection_threshold < self.threshold:
+            msg: str = (
+                "rejection_threshold must be >= threshold when set "
+                f"(got rejection_threshold={self.rejection_threshold!r}, "
+                f"threshold={self.threshold!r}). "
+                "Otherwise the second stage cannot reject any candidate that passed "
+                "the primary similarity gate."
             )
             raise ValueError(msg)
         return self

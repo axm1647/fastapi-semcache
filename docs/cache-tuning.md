@@ -98,6 +98,7 @@ The second stage can apply a stricter similarity cutoff on the in-memory candida
 
 - **`SEMANTIC_CACHE_REJECTION_THRESHOLD`** (`CacheSettings.rejection_threshold`):
   - When unset (`None` or empty env var), behavior matches the original single-threshold model: the best remaining candidate is accepted.
+  - When set, it must be **greater than or equal to** `SEMANTIC_CACHE_THRESHOLD`; otherwise settings validation fails (a lower value would make the second stage unable to reject anything that passed the primary gate).
   - When set, the cache scans the candidates in order and selects the **first** entry whose `similarity >= rejection_threshold`.
   - If **no** candidate passes this stricter bar, the cache returns a **miss** (`is_hit=False`).
 
@@ -128,6 +129,7 @@ This is useful when you want to:
 
 - If `SEMANTIC_CACHE_TOP_K_CANDIDATES` is less than `1`, it is treated as `1` internally.
 - All thresholds are clamped to the inclusive range \[0.0, 1.0] by `CacheSettings`.
+- When `SEMANTIC_CACHE_REJECTION_THRESHOLD` is set, it must satisfy `rejection_threshold >= threshold`.
 
 ## Timeout tuning
 
