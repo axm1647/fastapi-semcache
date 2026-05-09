@@ -6,9 +6,23 @@
 from __future__ import annotations
 
 import json
-from typing import Self
+from typing import TYPE_CHECKING, Self
 
-import redis.asyncio as redis_async
+if TYPE_CHECKING:
+    import redis.asyncio as redis_async
+
+
+def _require_redis():
+    """Import redis.asyncio or raise with install hint."""
+    try:
+        import redis.asyncio as redis_asyncio
+    except ImportError as exc:
+        msg: str = (
+            "RedisResponseStore requires optional dependencies. pip install "
+            "'fastapi-semcache[redis]'"
+        )
+        raise ImportError(msg) from exc
+    return redis_asyncio
 
 
 class RedisResponseStore:
@@ -40,8 +54,10 @@ class RedisResponseStore:
         self._client = None
 
     def _client_or_create(self) -> redis_async.Redis:
+        redis_asyncio = _require_redis()
+
         if self._client is None:
-            self._client = redis_async.from_url(
+            self._client = redis_asyncio.from_url(
                 self._redis_uri,
                 decode_responses=True,
             )
