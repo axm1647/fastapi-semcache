@@ -28,12 +28,13 @@ Optional extras:
 - `embed-huggingface` / `embed-huggingface-cpu`: Sentence Transformers with **CPU** PyTorch.
 - `embed-huggingface-gpu`: Sentence Transformers with a CUDA-enabled PyTorch install.
 - `embed-openai`: OpenAI embeddings (`openai`, `tiktoken`).
+- `embed-ollama`: Ollama embeddings via the OpenAI-compatible HTTP API (`openai` only).
 
 Dependency notes:
 
 - Core `fastapi-semcache` has no LangChain dependency.
 - Core does **not** include the `redis` PyPI package; use **`pip install "fastapi-semcache[redis]"`** whenever you configure a non-empty Redis URI (otherwise the first Redis use raises `ImportError` with an install hint).
-- Optional extras only add their listed packages (`redis`, `sentence-transformers`/`torch`, or `openai`/`tiktoken`).
+- Optional extras only add their listed packages (`redis`, `sentence-transformers`/`torch`, `openai`/`tiktoken`, or `openai` alone for `embed-ollama`).
 
 ### CPU
 
@@ -57,6 +58,14 @@ Install the OpenAI extra so `embedder_type="openai"` works (pulls `openai` and `
 
 ```bash
 pip install "fastapi-semcache[embed-openai]"
+```
+
+### Ollama embeddings
+
+Install the Ollama extra so `embedder_type="ollama"` works (pulls `openai` only). Set **`SEMANTIC_CACHE_OLLAMA_EMBEDDING_MODEL`** and **`SEMANTIC_CACHE_OLLAMA_EMBEDDING_DIMENSIONS`** to match the embedding model you run (dimensions must match pgvector). Optionally set **`SEMANTIC_CACHE_OLLAMA_BASE_URL`** (default `http://127.0.0.1:11434/v1`) and **`OLLAMA_API_KEY`** when your server uses auth.
+
+```bash
+pip install "fastapi-semcache[embed-ollama]"
 ```
 
 ### Redis response cache

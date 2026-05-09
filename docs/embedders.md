@@ -1,14 +1,16 @@
 # Custom embedders and minimal installs
 
-The PyPI package **`fastapi-semcache`** installs core runtime dependencies only (FastAPI, HTTPX, Postgres, Redis, settings). Optional extras such as `embed-openai` and `embed-huggingface` pull in vendor-specific stacks.
+The PyPI package **`fastapi-semcache`** installs core runtime dependencies only (FastAPI, HTTPX, Postgres, Redis, settings). Optional extras such as `embed-openai`, `embed-ollama`, and `embed-huggingface` pull in vendor-specific stacks.
 
 If you want to avoid those stacks, or you already host embeddings elsewhere, implement a small class against **`BaseEmbedder`** and pass it into **`SemanticCache(embedder=...)`**. No embedding extra is required for that path.
 
 ## Built-in embedders: `get_embedder` vs constructor arguments
 
-**`get_embedder(settings)`** (used automatically when you omit **`embedder=`** on **`SemanticCache`**) only reads **`CacheSettings.embedder_type`** (environment **`SEMANTIC_CACHE_EMBEDDER_TYPE`**) and the matching API key field. It constructs **`SBERTEmbedder`** or **`OpenAIEmbedder`** with **no** **`model_name`**, **`dimensions`**, **`base_url`**, or other constructor overrides. Those embedders then use their **class defaults** (for example **`text-embedding-3-small`** / **`1536`** on **`OpenAIEmbedder`**, or **`sentence-transformers/all-MiniLM-L6-v2`** on **`SBERTEmbedder`**).
+**`get_embedder(settings)`** (used automatically when you omit **`embedder=`** on **`SemanticCache`**) reads **`CacheSettings.embedder_type`** (environment **`SEMANTIC_CACHE_EMBEDDER_TYPE`**) and the matching settings fields. It constructs **`SBERTEmbedder`** or **`OpenAIEmbedder`** with **no** **`model_name`**, **`dimensions`**, **`base_url`**, or other constructor overrides for those two backends (they use **class defaults**, for example **`text-embedding-3-small`** / **`1536`** on **`OpenAIEmbedder`**, or **`sentence-transformers/all-MiniLM-L6-v2`** on **`SBERTEmbedder`**).
 
-There is **no** separate environment variable today for “which embedding model id” on the stock factory path. Changing the embedding model or dimensions for a **built-in** embedder is normal configuration, not a custom embedder: import **`OpenAIEmbedder`** or **`SBERTEmbedder`**, pass the constructor arguments you need, and wire **`SemanticCache(embedder=..., settings=...)`** as below.
+When **`embedder_type`** is **`ollama`**, settings **must** include **`ollama_embedding_model`** and **`ollama_embedding_dimensions`** (environment **`SEMANTIC_CACHE_OLLAMA_EMBEDDING_MODEL`** and **`SEMANTIC_CACHE_OLLAMA_EMBEDDING_DIMENSIONS`**). There is no safe library default across Qwen, Nomic, and other models; the declared width must match the running model and your pgvector column.
+
+There is **no** separate environment variable today for “which embedding model id” on the stock factory path for **`OpenAIEmbedder`** / **`SBERTEmbedder`**. Changing the embedding model or dimensions for those backends is normal configuration: import **`OpenAIEmbedder`** or **`SBERTEmbedder`**, pass the constructor arguments you need, and wire **`SemanticCache(embedder=..., settings=...)`** as below.
 
 ```python
 from semanticcache import SemanticCache, get_cache_settings
@@ -56,7 +58,7 @@ Batching, retries, and timeouts are your responsibility inside `embed`.
 
 ## Wiring `SemanticCache`
 
-Pass any **`BaseEmbedder`** instance (built-in **`OpenAIEmbedder`** / **`SBERTEmbedder`** with non-default args, or your own subclass) as the keyword-only argument **`embedder`**. The factory **`get_embedder(settings)`** is not used when **`embedder`** is set, so **`SEMANTIC_CACHE_EMBEDDER_TYPE`** does not choose that instance.
+Pass any **`BaseEmbedder`** instance (built-in **`OpenAIEmbedder`**, **`SBERTEmbedder`**, **`OllamaEmbedder`**, or your own subclass) as the keyword-only argument **`embedder`**. The factory **`get_embedder(settings)`** is not used when **`embedder`** is set, so **`SEMANTIC_CACHE_EMBEDDER_TYPE`** does not choose that instance.
 
 ```python
 from semanticcache import SemanticCache, get_cache_settings
@@ -157,6 +159,16 @@ ada = OpenAIEmbedder(
 ```
 
 For **`text-embedding-3-small`** / **`text-embedding-3-large`**, the default **`send_dimensions_to_api=True`** is appropriate when you want a reduced **output** width (as supported by that model family).
+
+## OllamaEmbedder (`embed-ollama`)
+
+**`OllamaEmbedder`** uses the official **`openai`** **`AsyncOpenAI`** client against Ollama’s **OpenAI-compatible** embeddings endpoint (configure **`base_url`** with the **`/v1`** suffix, for example **`http://127.0.0.1:11434/v1`**). Install **`fastapi-semcache[embed-ollama]`**.
+
+You must pass **`model_name`** and **`dimensions`** explicitly. After each response, the backend checks that every vector length equals **`dimensions`** so misconfiguration fails fast.
+
+Optional **`api_key`**: when omitted, a placeholder Bearer value is sent so the SDK does not pick up **`OPENAI_API_KEY`** from the environment; set **`api_key`** when your Ollama deployment requires auth.
+
+Through **`get_embedder(settings)`**, **`SEMANTIC_CACHE_OLLAMA_EMBEDDING_MODEL`**, **`SEMANTIC_CACHE_OLLAMA_EMBEDDING_DIMENSIONS`**, **`SEMANTIC_CACHE_OLLAMA_BASE_URL`**, and **`OLLAMA_API_KEY`** / **`SEMANTIC_CACHE_OLLAMA_API_KEY`** populate those fields.
 
 ## Reusing a long-lived HTTP client
 
