@@ -209,6 +209,15 @@ class SemanticCache:
         self._embed_timeout_seconds = self._settings.embed_timeout_seconds
         self._store_timeout_seconds = self._settings.store_timeout_seconds
         self._timeout_counts = Counter()
+        if self._embed_timeout_seconds is None:
+            _logger.warning(
+                "embed_timeout_seconds is None, embedder calls will not be timed out"
+            )
+        if self._store_timeout_seconds is None:
+            _logger.warning(
+                "store_timeout_seconds is None, database operations will not be timed "
+                "out"
+            )
 
     @property
     def settings(self) -> "CacheSettings":
