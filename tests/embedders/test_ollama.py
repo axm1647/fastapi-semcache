@@ -61,7 +61,9 @@ def test_resolved_api_key_strips_user_value(monkeypatch: pytest.MonkeyPatch) -> 
 
 
 @pytest.mark.asyncio
-async def test_embed_batch_validates_dimensions(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_embed_batch_validates_dimensions(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Vectors shorter or longer than ``dimensions`` raise."""
     fake_openai = MagicMock()
     fake_openai.AsyncOpenAI = MagicMock()
