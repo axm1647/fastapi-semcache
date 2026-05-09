@@ -11,7 +11,7 @@ call per miss, reducing latency and external embedding API cost.
 `SemanticCache.get` and `SemanticCache.put` accept an optional **`model`** string (for example an LLM id from JSON or a header). The value is normalized (stripped; `None` or blank becomes the **default bucket**, `model_key=""`). Lookup and writes are scoped:
 
 - **Postgres:** Rows carry a `model_key` column; ANN search only considers rows for that bucket.
-- **Redis:** Response keys include short hashes of the scope and model buckets plus the row id so payloads never collide across tenants or models for the same embedder row.
+- **Redis:** Response keys include short hashes of the scope and model buckets plus the row id so payloads never collide across tenants or models for the same embedder row. Enable Redis by setting **`SEMANTIC_CACHE_REDIS_URI`** and install the **`redis`** extra: `pip install "fastapi-semcache[redis]"` (provides `redis>=7.4.0`; omitted from the core wheel).
 
 Pass the **same** `model` on `get` and `put` for a given upstream route.
 

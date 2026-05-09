@@ -24,6 +24,7 @@ pip install fastapi-semcache
 
 Optional extras:
 
+- `redis`: Async Redis client (`redis>=7.4.0`) for TTL-backed response blobs when **`SEMANTIC_CACHE_REDIS_URI`** is set. Core installs omit it so Postgres-only deployments avoid pulling Redis.
 - `embed-huggingface` / `embed-huggingface-cpu`: Sentence Transformers with **CPU** PyTorch.
 - `embed-huggingface-gpu`: Sentence Transformers with a CUDA-enabled PyTorch install.
 - `embed-openai`: OpenAI embeddings (`openai`, `tiktoken`).
@@ -31,7 +32,8 @@ Optional extras:
 Dependency notes:
 
 - Core `fastapi-semcache` has no LangChain dependency.
-- Optional extras only add embedder-specific packages (`sentence-transformers`/`torch` or `openai`/`tiktoken`).
+- Core does **not** include the `redis` PyPI package; use **`pip install "fastapi-semcache[redis]"`** whenever you configure a non-empty Redis URI (otherwise the first Redis use raises `ImportError` with an install hint).
+- Optional extras only add their listed packages (`redis`, `sentence-transformers`/`torch`, or `openai`/`tiktoken`).
 
 ### CPU
 
@@ -57,11 +59,21 @@ Install the OpenAI extra so `embedder_type="openai"` works (pulls `openai` and `
 pip install "fastapi-semcache[embed-openai]"
 ```
 
+### Redis response cache
+
+Install the Redis extra when **`SEMANTIC_CACHE_REDIS_URI`** (or constructor **`redis_uri`**) is non-empty so **`redis.asyncio`** is available.
+
+```bash
+pip install "fastapi-semcache[redis]"
+```
+
+You can combine extras, for example **`pip install "fastapi-semcache[redis,embed-openai]"`**.
+
 ## FastAPI middleware
 
 Add `SemanticCacheMiddleware` to your app and reuse one `SemanticCache` instance for all requests. Configure Postgres, Redis, and the embedder with **`SEMANTIC_CACHE_*`** environment variables (see `.env.example`). By default only **`POST`** requests are intercepted; the middleware derives cache-key text from JSON bodies using `query`, `prompt`, `input`, or chat-style `messages` (see `default_extract_query` in `semanticcache.middleware`). Successful responses whose body parses as a **JSON object** are candidates for storage, and cache hits replay the original HTTP status and response metadata.
 
-Redis is optional. If **`SEMANTIC_CACHE_REDIS_URI`** is empty (or whitespace), the cache runs in Postgres-only mode: semantic lookup and response storage still work via pgvector, but Redis TTL-based payload caching is disabled.
+Redis is optional. If **`SEMANTIC_CACHE_REDIS_URI`** is empty (or whitespace), the cache runs in Postgres-only mode: semantic lookup and response storage still work via pgvector, but Redis TTL-based payload caching is disabled. If you **do** set a Redis URI, install **`fastapi-semcache[redis]`** (see [Redis response cache](#redis-response-cache)).
 
 ```python
 from typing import Any
