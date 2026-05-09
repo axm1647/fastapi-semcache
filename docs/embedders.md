@@ -4,6 +4,30 @@ The PyPI package **`fastapi-semcache`** installs core runtime dependencies only 
 
 If you want to avoid those stacks, or you already host embeddings elsewhere, implement a small class against **`BaseEmbedder`** and pass it into **`SemanticCache(embedder=...)`**. No embedding extra is required for that path.
 
+## Built-in embedders: `get_embedder` vs constructor arguments
+
+**`get_embedder(settings)`** (used automatically when you omit **`embedder=`** on **`SemanticCache`**) only reads **`CacheSettings.embedder_type`** (environment **`SEMANTIC_CACHE_EMBEDDER_TYPE`**) and the matching API key field. It constructs **`SBERTEmbedder`** or **`OpenAIEmbedder`** with **no** **`model_name`**, **`dimensions`**, **`base_url`**, or other constructor overrides. Those embedders then use their **class defaults** (for example **`text-embedding-3-small`** / **`1536`** on **`OpenAIEmbedder`**, or **`sentence-transformers/all-MiniLM-L6-v2`** on **`SBERTEmbedder`**).
+
+There is **no** separate environment variable today for “which embedding model id” on the stock factory path. Changing the embedding model or dimensions for a **built-in** embedder is normal configuration, not a custom embedder: import **`OpenAIEmbedder`** or **`SBERTEmbedder`**, pass the constructor arguments you need, and wire **`SemanticCache(embedder=..., settings=...)`** as below.
+
+```python
+from semanticcache import SemanticCache, get_cache_settings
+from semanticcache.embedders import OpenAIEmbedder
+
+cache = SemanticCache(
+    embedder=OpenAIEmbedder(
+        model_name="text-embedding-3-large",
+        dimensions=3072,
+        api_key=get_cache_settings().openai_api_key,
+    ),
+    settings=get_cache_settings(),
+)
+```
+
+Use the same pattern for **`SBERTEmbedder(model_name="...", normalize_embeddings=..., api_key=...)`**. **`cache_namespace`** (and thus pgvector table routing) incorporates model id and dimensions, so a different **`model_name`** or width does not collide with another setup.
+
+When you bypass **`get_embedder`**, **`SEMANTIC_CACHE_EMBEDDER_TYPE`** no longer selects the implementation; keep **`embedder_type`** aligned with reality if you rely on **`CacheResult.source`** (see **`CacheResult.source` and settings** below).
+
 ## Install (core only)
 
 ```bash
@@ -32,7 +56,7 @@ Batching, retries, and timeouts are your responsibility inside `embed`.
 
 ## Wiring `SemanticCache`
 
-Pass your instance as the keyword-only argument **`embedder`**. The factory **`get_embedder(settings)`** is not used when `embedder` is set, so **`SEMANTIC_CACHE_EMBEDDER_TYPE`** does not select your implementation.
+Pass any **`BaseEmbedder`** instance (built-in **`OpenAIEmbedder`** / **`SBERTEmbedder`** with non-default args, or your own subclass) as the keyword-only argument **`embedder`**. The factory **`get_embedder(settings)`** is not used when **`embedder`** is set, so **`SEMANTIC_CACHE_EMBEDDER_TYPE`** does not choose that instance.
 
 ```python
 from semanticcache import SemanticCache, get_cache_settings
@@ -42,13 +66,11 @@ cache = SemanticCache(embedder=MyEmbedder(...), settings=get_cache_settings())
 
 Optional: pass **`embedding_dim=`** to assert it matches `embedder.embedding_dim` (a mismatch raises **`ValueError`**).
 
-When you use the built-in Hugging Face backend through `get_embedder(settings)`,
-`SBERTEmbedder` receives the token from `settings.hugging_face_api_key`.
-`SBERTEmbedder` does not re-read global settings on its own.
+When you use the built-in Hugging Face backend through **`get_embedder(settings)`**, **`SBERTEmbedder`** receives the token from **`settings.hugging_face_api_key`**. **`SBERTEmbedder`** does not re-read global settings on its own.
 
 ### `CacheResult.source` and settings
 
-`CacheResult.source` is still derived from **`CacheSettings.embedder_type`** (environment **`SEMANTIC_CACHE_EMBEDDER_TYPE`**) for hits and misses, not from your custom class. If you rely on that field for metrics, either align `embedder_type` with how you want logs labeled or treat `source` as configuration metadata only when using a custom embedder.
+**`CacheResult.source`** is still derived from **`CacheSettings.embedder_type`** (environment **`SEMANTIC_CACHE_EMBEDDER_TYPE`**) for hits and misses, not from the concrete embedder class or **`model_name`**. If you rely on that field for metrics, either align **`embedder_type`** with the backend you instantiated (**`huggingface`** vs **`openai`**) or treat **`source`** as configuration metadata only when **`embedder`** was passed explicitly.
 
 ## Example: HTTP example API with HTTPX
 
@@ -117,8 +139,7 @@ embedder = HttpExampleEmbedder(
 cache = SemanticCache(embedder=embedder, settings=get_cache_settings())
 ```
 
-Pick **`cache_namespace`** so it changes whenever model, pooling, or vector width changes; otherwise you risk reading incompatible rows from an old table.
-> Pick cache_namespace so it changes whenever model, pooling, or vector width changes; otherwise you risk reading incompatible rows from an old table. If storage is shared, include an application or environment prefix so your namespace cannot match another service’s built-in vendor:model:dimensions string by accident.
+Pick **`cache_namespace`** so it changes whenever model, pooling, or vector width changes; otherwise you risk reading incompatible rows from an old table. If storage is shared, include an application or environment prefix so your namespace cannot match another service’s built-in **`vendor:model:dimensions`** string by accident.
 
 ## OpenAIEmbedder and `send_dimensions_to_api`
 
