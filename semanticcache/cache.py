@@ -142,6 +142,7 @@ class SemanticCache:
     _vector_store: AsyncPgVectorStore
     _pg_open: bool
     _closed: bool
+    _open_lock: asyncio.Lock
     _embed_timeout_seconds: float | None
     _store_timeout_seconds: float | None
     _timeout_counts: Counter[str]
@@ -211,6 +212,7 @@ class SemanticCache:
         )
         self._pg_open = False
         self._closed = False
+        self._open_lock = asyncio.Lock()
         self._embed_timeout_seconds = self._settings.embed_timeout_seconds
         self._store_timeout_seconds = self._settings.store_timeout_seconds
         self._timeout_counts = Counter()
@@ -262,11 +264,20 @@ class SemanticCache:
             ) from exc
 
     async def _ensure_open(self) -> None:
-        """Open the pgvector pool on first use."""
+        """Open the pgvector pool on first use.
+
+        Uses a double-checked lock so that concurrent callers on the same
+        event-loop iteration each wait for the single initialization path
+        rather than racing to open the pool multiple times.
+        """
         if self._closed:
             msg = "SemanticCache is closed"
             raise RuntimeError(msg)
-        if not self._pg_open:
+        if self._pg_open:
+            return
+        async with self._open_lock:
+            if self._pg_open:
+                return
             await self._with_timeout(
                 operation="db_open",
                 timeout_seconds=self._store_timeout_seconds,
