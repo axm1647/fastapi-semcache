@@ -24,17 +24,8 @@ from .middleware.adapters.fastapi import SemanticCacheMiddleware
 if TYPE_CHECKING:
     from .config import CacheSettings
 
+
 _logger = logging.getLogger(__name__)
-
-_settings: "CacheSettings" = get_cache_settings()
-
-_DISABLE_PROXY_APP_DOCS: bool = _settings.disable_proxy_app_docs
-_PROXY_APP_OPENAPI_URL: str | None = (
-    None if _DISABLE_PROXY_APP_DOCS else "/openapi.json"
-)
-_PROXY_APP_DOCS_URL: str | None = None if _DISABLE_PROXY_APP_DOCS else "/docs"
-_PROXY_APP_REDOC_URL: str | None = None if _DISABLE_PROXY_APP_DOCS else "/redoc"
-
 
 _HOP_BY_HOP: frozenset[str] = frozenset(
     {
@@ -139,6 +130,8 @@ def create_semantic_cache_proxy_app(
 
     Streaming responses are buffered in full (same constraint as
     ``SemanticCacheMiddleware``).
+    OpenAPI and interactive docs URLs honor ``disable_proxy_app_docs`` from
+    ``get_cache_settings()`` at call time (not at import time).
 
     Args:
         upstream: Base URL for the backend (for example ``http://127.0.0.1:8001`` or
@@ -188,12 +181,18 @@ def create_semantic_cache_proxy_app(
             app.state.proxy_upstream_base = base
             yield
 
+    proxy_settings: "CacheSettings" = get_cache_settings()
+    _disable_proxy_app_docs = proxy_settings.disable_proxy_app_docs
+    _openapi_url = None if _disable_proxy_app_docs else "/openapi.json"
+    _docs_url = None if _disable_proxy_app_docs else "/docs"
+    _redoc_url = None if _disable_proxy_app_docs else "/redoc"
+
     app = FastAPI(
         lifespan=lifespan,
         title="Semantic cache proxy",
-        openapi_url=_PROXY_APP_OPENAPI_URL,
-        docs_url=_PROXY_APP_DOCS_URL,
-        redoc_url=_PROXY_APP_REDOC_URL,
+        openapi_url=_openapi_url,
+        docs_url=_docs_url,
+        redoc_url=_redoc_url,
     )
     app.add_middleware(SemanticCacheMiddleware, cache=cache, **middleware_kwargs)
 
