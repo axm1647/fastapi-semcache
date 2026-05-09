@@ -241,7 +241,6 @@ Today the middleware **buffers the full downstream response** before sending it 
 
 Embeddings from the following providers are planned:
 
-- **Ollama** (HTTP embedding API against a configurable base URL, so the server can run locally or on another host).
 - **Cohere**
 - **Voyage**
 
