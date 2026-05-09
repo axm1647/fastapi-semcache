@@ -260,6 +260,9 @@ embed-huggingface-gpu = [
     { name = "sentence-transformers" },
     { name = "torch" },
 ]
+embed-ollama = [
+    { name = "openai" },
+]
 embed-openai = [
     { name = "openai" },
     { name = "tiktoken" },
@@ -278,6 +281,7 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.136.1" },
     { name = "httpx", specifier = ">=0.27.0" },
     { name = "numpy", marker = "extra == 'test'", specifier = ">=1.24" },
+    { name = "openai", marker = "extra == 'embed-ollama'", specifier = ">=1.40" },
     { name = "openai", marker = "extra == 'embed-openai'", specifier = ">=1.40" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.3.3" },
     { name = "psycopg-pool", specifier = ">=3.3.0" },
@@ -293,7 +297,7 @@ requires-dist = [
     { name = "torch", marker = "extra == 'embed-huggingface-cpu'", specifier = ">=2.1.0" },
     { name = "torch", marker = "extra == 'embed-huggingface-gpu'", specifier = ">=2.1.0" },
 ]
-provides-extras = ["redis", "embed-huggingface-cpu", "embed-huggingface-gpu", "embed-huggingface", "embed-openai", "test"]
+provides-extras = ["redis", "embed-huggingface-cpu", "embed-huggingface-gpu", "embed-huggingface", "embed-openai", "embed-ollama", "test"]
 
 [[package]]
 name = "filelock"

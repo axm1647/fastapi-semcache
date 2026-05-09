@@ -46,6 +46,7 @@ embed-huggingface-cpu = ["sentence-transformers>=3.0", "torch>=2.1.0"]
 embed-huggingface-gpu = ["sentence-transformers>=3.0", "torch>=2.1.0"]
 embed-huggingface = ["sentence-transformers>=3.0", "torch>=2.1.0"]
 embed-openai = ["openai>=1.40", "tiktoken>=0.7"]
+embed-ollama = ["openai>=1.40"]
 test = [
     "numpy>=1.24",
     "pytest>=8.0",
