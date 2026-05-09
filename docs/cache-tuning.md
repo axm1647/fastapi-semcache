@@ -22,13 +22,20 @@ lookup text includes HTTP method, normalized path, model value, and extracted
 semantic query, then tenant scope is applied separately. This avoids accidental
 cross-endpoint reuse for semantically similar prompts.
 
-**Default (safe shared deployments):** `SEMANTIC_CACHE_REQUIRE_CACHE_SCOPE` (`CacheSettings.require_cache_scope`) is **true**. Then:
+**Default (scope required):** `SEMANTIC_CACHE_REQUIRE_CACHE_SCOPE` (`CacheSettings.require_cache_scope`) is **true**. Then:
 
 - `SemanticCache.get(..., scope=...)` / `put(..., scope=...)` require a **non-empty** normalized scope string. Missing scope yields a cache **miss** and **skips** `put` (no cross-tenant writes).
 - Pass the **same** `scope` on `get` and `put` as you use for tenant, org, or user partition (opaque string from your auth layer).
 - Use **`resolve_cache_scope`** to mirror middleware rules in custom integrations.
 
-**Middleware:** When `require_cache_scope` is true, the default extractor reads `X-Semantic-Cache-Scope` and JSON fields `cache_scope` or `tenant_id`. Override with **`extract_scope`** (`(request, body) -> str | None`) for custom routing.
+**Middleware:** When `require_cache_scope` is true and you omit **`extract_scope`**, the middleware uses **`default_extract_scope_from_request_context`**, which reads `X-Semantic-Cache-Scope` and JSON fields `cache_scope` or `tenant_id`. That path trusts client headers and body; use it only for single-tenant setups or when a trusted proxy sets those fields. For multi-tenant production, pass **`extract_scope`** (`(request, body) -> str | None`) that resolves scope from authenticated identity. A concrete helper is **`trusted_extract_scope_from_server_side`** (`semanticcache.middleware.core.extractors`), which reads only **`request.state.cache_scope`** or **`request.state.tenant_id`** after your auth middleware populates them:
+
+```python
+from semanticcache.middleware.core.extractors import trusted_extract_scope_from_server_side
+
+async def extract_scope(request, body: bytes) -> str | None:
+    return await trusted_extract_scope_from_server_side(request)
+```
 
 For privacy and HTTP cache-safety alignment, middleware also skips cache writes when upstream responds with `Cache-Control: no-store`, `Cache-Control: private`, or any `Set-Cookie` header.
 

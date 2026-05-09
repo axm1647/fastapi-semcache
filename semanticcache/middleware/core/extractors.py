@@ -1,4 +1,14 @@
-"""Request and JSON extraction helpers for semantic cache middleware."""
+"""Request and JSON extraction helpers for semantic cache middleware.
+
+Warning:
+    ``default_extract_scope_from_request_context`` trusts scope values supplied by
+    the client (HTTP headers and JSON body). Use it only for single-tenant
+    workloads or when a trusted gateway strips or overwrites untrusted fields
+    before requests reach your app. For multi-tenant production, provide
+    ``SemanticCacheMiddleware(..., extract_scope=...)`` that resolves scope from
+    server-side identity (for example ``trusted_extract_scope_from_server_side``
+    after authentication middleware sets ``request.state``).
+"""
 
 from __future__ import annotations
 
@@ -126,13 +136,19 @@ async def default_extract_model(
     return None
 
 
-async def default_extract_scope(
+async def default_extract_scope_from_request_context(
     request: Request,
     body: bytes,
     *,
     scope_header_name: str,
 ) -> str | None:
-    """Read tenant or namespace scope from header or JSON body.
+    """Read scope from client-visible header and JSON body fields.
+
+    Suitable for single-tenant apps, development, or deployments where a trusted
+    proxy sets scope headers or JSON from authenticated identity. Callers that
+    expose this middleware directly to untrusted clients should prefer
+    ``extract_scope`` implementations that derive scope only from server-side
+    state (see ``trusted_extract_scope_from_server_side``).
 
     Args:
         request: Current request.
@@ -157,4 +173,27 @@ async def default_extract_scope(
             coerced = _json_scope_field_value(parsed.get(field))
             if coerced is not None:
                 return coerced
+    return None
+
+
+async def trusted_extract_scope_from_server_side(request: Request) -> str | None:
+    """Read cache partition scope only from ``request.state``.
+
+    Set ``request.state.cache_scope`` or ``request.state.tenant_id`` in trusted
+    middleware (authentication, tenancy resolution, or an edge gateway adapter)
+    before ``SemanticCacheMiddleware`` runs. Integer ``tenant_id`` values are
+    normalized to strings consistently with JSON extraction.
+
+    Args:
+        request: Request whose ``state`` attributes were populated by trusted code.
+
+    Returns:
+        Non-empty scope string when present, else None.
+    """
+    state = request.state
+    for attr in ("cache_scope", "tenant_id"):
+        raw: object = getattr(state, attr, None)
+        coerced = _json_scope_field_value(raw)
+        if coerced is not None:
+            return coerced
     return None

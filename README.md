@@ -97,7 +97,9 @@ async def chat_completions(body: dict[str, Any]) -> dict[str, Any]:
     # Clients should send JSON with prompt, query, input, or chat messages so the
     # middleware can build the cache key (see default_extract_query). By default a
     # tenant scope is also required (header X-Semantic-Cache-Scope or JSON
-    # cache_scope / tenant_id); see docs/cache-tuning.md. Misses run your handler;
+    # cache_scope / tenant_id); those values are client-controlled unless you replace
+    # extract_scope — unsuitable for multi-tenant production without a trusted edge
+    # or server-side scope (see docs/cache-tuning.md). Misses run your handler;
     # hits short-circuit with a cached JSON body.
     return {"choices": [{"message": {"role": "assistant", "content": "Hello"}}]}
 ```
@@ -136,7 +138,7 @@ app.add_middleware(
 
 Use **`extract_model`** when the cache key should also vary by model id from headers or JSON (same async `(request, body) -> str | None` idea). That model id is passed through to **`SemanticCache.get` / `put`**, which scope Postgres rows and Redis payload keys per model bucket as described in **`docs/cache-tuning.md`**.
 
-Use **`extract_scope`** (optional) when you need custom tenant or user routing; otherwise, with **`SEMANTIC_CACHE_REQUIRE_CACHE_SCOPE`** left at its default **`true`**, the middleware uses **`X-Semantic-Cache-Scope`** and JSON **`cache_scope`** / **`tenant_id`** (numeric **`tenant_id`** is accepted). Treat header or body scope as trusted only if your gateway or app sets it from authenticated identity; otherwise clients can spoof another tenant id. Set **`SEMANTIC_CACHE_REQUIRE_CACHE_SCOPE=false`** only for single-tenant apps or isolated cache storage. Scope rules in middleware match **`SemanticCache.settings`** when **`cache`** is a **`SemanticCache`** instance ( **`cache_settings`** still drives circuit breaker and flight-lock options). **`resolve_cache_scope`** matches the same rules for direct **`SemanticCache`** use.
+Use **`extract_scope`** (optional) when you need custom tenant or user routing; otherwise, with **`SEMANTIC_CACHE_REQUIRE_CACHE_SCOPE`** left at its default **`true`**, the middleware uses **`default_extract_scope_from_request_context`**, which reads **`X-Semantic-Cache-Scope`** and JSON **`cache_scope`** / **`tenant_id`** (numeric **`tenant_id`** is accepted). That default is appropriate only for single-tenant deployments or when a trusted gateway overwrites those fields from authenticated identity; otherwise clients can spoof another tenant id and probe or pollute another partition. For multi-tenant APIs exposed to clients, pass **`extract_scope`** that derives scope from server-side identity (see **`trusted_extract_scope_from_server_side`** in **`semanticcache.middleware.core.extractors`** after auth middleware sets **`request.state`**). Set **`SEMANTIC_CACHE_REQUIRE_CACHE_SCOPE=false`** only for single-tenant apps or isolated cache storage. Scope rules in middleware match **`SemanticCache.settings`** when **`cache`** is a **`SemanticCache`** instance ( **`cache_settings`** still drives circuit breaker and flight-lock options). **`resolve_cache_scope`** matches the same rules for direct **`SemanticCache`** use.
 
 See **`docs/cache-tuning.md`** for upgrade notes on **`scope_key`** and Redis key layout.
 

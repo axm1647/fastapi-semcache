@@ -40,7 +40,7 @@ from .types import ResponseShapeValidator, ResponseValidationContext
 from ...core.extractors import (
     default_extract_model,
     default_extract_query,
-    default_extract_scope,
+    default_extract_scope_from_request_context,
 )
 from ...core.coordination import MiddlewareCoordination
 from ...core.replay import (
@@ -118,9 +118,16 @@ class SemanticCacheMiddleware:
                 to reading ``model_header_name`` and JSON ``model``.
             model_header_name: Header checked by the default model extractor.
             extract_scope: Optional async tenant or namespace extractor. When
-                tenant scope is required, the default reads ``scope_header_name`` and
-                JSON ``cache_scope`` / ``tenant_id`` (including integer ``tenant_id``).
-            scope_header_name: Header checked by the default scope extractor.
+                omitted and scope is required, the middleware uses
+                ``default_extract_scope_from_request_context``, which reads
+                ``scope_header_name`` and JSON ``cache_scope`` / ``tenant_id``
+                (including integer ``tenant_id``). That default trusts client
+                headers and body; multi-tenant production apps should pass an
+                extractor that resolves scope from server-side identity (see
+                ``trusted_extract_scope_from_server_side`` in
+                ``semanticcache.middleware.core.extractors``).
+            scope_header_name: Header checked when using the request-context default
+                scope extractor.
             validate_response: Optional sync or async callback that receives a
                 ``ResponseValidationContext`` before a successful JSON object is stored.
                 Return False to skip storing malformed or route-mismatched payloads.
@@ -180,8 +187,10 @@ class SemanticCacheMiddleware:
             model_header_name=self._model_header_name,
         )
 
-    async def _default_extract_scope(self, request: Request, body: bytes) -> str | None:
-        """Read tenant or namespace scope from header or JSON body.
+    async def _default_extract_scope_from_request_context(
+        self, request: Request, body: bytes
+    ) -> str | None:
+        """Read scope via ``default_extract_scope_from_request_context``.
 
         Args:
             request: Current request.
@@ -190,7 +199,7 @@ class SemanticCacheMiddleware:
         Returns:
             Non-empty scope string when present, else None.
         """
-        return await default_extract_scope(
+        return await default_extract_scope_from_request_context(
             request,
             body,
             scope_header_name=self._scope_header_name,
@@ -574,7 +583,8 @@ class SemanticCacheMiddleware:
             scope_settings=self._scope_settings,
             extract_query=self._extract_query,
             extract_model=self._extract_model or self._default_extract_model,
-            extract_scope_required=self._extract_scope or self._default_extract_scope,
+            extract_scope_required=self._extract_scope
+            or self._default_extract_scope_from_request_context,
             extract_scope_optional=self._extract_scope,
             log_extraction_failure=lambda req, phase, exc: self._log_extraction_failure(
                 req,
