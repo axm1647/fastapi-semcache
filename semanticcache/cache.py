@@ -6,14 +6,14 @@ import asyncio
 import hashlib
 import logging
 from collections import Counter
-from typing import TYPE_CHECKING, Awaitable, Literal, TypeVar
+from typing import TYPE_CHECKING, Awaitable, TypeVar
 
 from .config import get_cache_settings
 from .embedders import BaseEmbedder, get_embedder
 from .exceptions import CacheTimeoutError
 from .stores import AsyncPgVectorStore, RedisResponseStore
 from .stores.vector.storage_ids import embedding_storage_ids
-from .types import CacheResult
+from .types import CacheResult, CacheSource
 
 if TYPE_CHECKING:
     from semanticcache.config import CacheSettings
@@ -107,14 +107,7 @@ def resolve_cache_scope(raw: str | None, *, settings: "CacheSettings") -> str | 
 
 def _embed_source(
     settings: "CacheSettings",
-) -> Literal[
-    "embedders.sbert",
-    "embedders.openai",
-    "embedders.cohere",
-    "embedders.voyage",
-    "embedders.ollama",
-    "none",
-]:
+) -> CacheSource:
     """Map configured embedder type to ``CacheResult.source``."""
     if settings.embedder_type == "huggingface":
         return "embedders.sbert"

@@ -2,6 +2,15 @@ from typing import Literal
 
 from pydantic import BaseModel
 
+CacheSource = Literal[
+    "embedders.sbert",
+    "embedders.openai",
+    "embedders.cohere",
+    "embedders.voyage",
+    "embedders.ollama",
+    "none",
+]
+
 
 class CacheQuery(BaseModel):
     """Request-shaped cache lookup payload (query text and optional model key)."""
@@ -16,14 +25,7 @@ class CacheResult(BaseModel):
     # TODO: update to accept multiple resources
     is_hit: bool
     similarity: float | None = None
-    source: Literal[
-        "embedders.sbert",
-        "embedders.openai",
-        "embedders.cohere",
-        "embedders.voyage",
-        "embedders.ollama",
-        "none",
-    ] = "none"
+    source: CacheSource = "none"
     response: dict[str, object] | None = None
     query_embedding: list[float] | None = None
 
