@@ -2,9 +2,11 @@
 
 """Environment-backed cache settings (Postgres, Redis, embedder selection)."""
 
+from __future__ import annotations
+
 from typing import ClassVar, Literal
 
-from pydantic import AliasChoices, Field
+from pydantic import AliasChoices, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -121,6 +123,28 @@ class CacheSettings(BaseSettings):
             "SEMANTIC_CACHE_OLLAMA_API_KEY",
         ),
     )
+    ollama_base_url: str = Field(
+        default="http://127.0.0.1:11434/v1",
+        description=(
+            "OpenAI-compatible API root for Ollama (path must include /v1). "
+            "Used when embedder_type is ollama."
+        ),
+    )
+    ollama_embedding_model: str | None = Field(
+        default=None,
+        description=(
+            "Ollama embedding model id; required when embedder_type is ollama "
+            "(must match ``ollama_embedding_dimensions`` and your pgvector column)."
+        ),
+    )
+    ollama_embedding_dimensions: int | None = Field(
+        default=None,
+        ge=1,
+        description=(
+            "Embedding vector width for the configured Ollama model; required when "
+            "embedder_type is ollama."
+        ),
+    )
 
     circuit_breaker_429_enabled: bool = Field(
         False,
@@ -165,6 +189,33 @@ class CacheSettings(BaseSettings):
             "header. Default False to avoid accidental cross-user response reuse."
         ),
     )
+
+    @model_validator(mode="after")
+    def _validate_ollama_embedding_settings(self) -> CacheSettings:
+        """Ensure Ollama embedder settings include model id and vector width.
+
+        Returns:
+            Unchanged settings when validation passes.
+
+        Raises:
+            ValueError: When ``embedder_type`` is ollama but model or dimensions are
+                missing.
+        """
+        if self.embedder_type != "ollama":
+            return self
+        if self.ollama_embedding_model is None or not self.ollama_embedding_model.strip():
+            msg = (
+                "ollama_embedding_model is required when embedder_type is 'ollama' "
+                "(set SEMANTIC_CACHE_OLLAMA_EMBEDDING_MODEL)."
+            )
+            raise ValueError(msg)
+        if self.ollama_embedding_dimensions is None:
+            msg = (
+                "ollama_embedding_dimensions is required when embedder_type is "
+                "'ollama' (set SEMANTIC_CACHE_OLLAMA_EMBEDDING_DIMENSIONS)."
+            )
+            raise ValueError(msg)
+        return self
 
 
 def get_cache_settings() -> CacheSettings:
