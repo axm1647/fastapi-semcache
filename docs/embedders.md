@@ -1,6 +1,6 @@
 # Custom embedders and minimal installs
 
-The PyPI package **`fastapi-semcache`** installs core runtime dependencies only (FastAPI, HTTPX, Postgres, Redis, settings). Optional extras such as `embed-openai`, `embed-ollama`, and `embed-huggingface` pull in vendor-specific stacks.
+The PyPI package **`fastapi-semcache`** installs core runtime dependencies only (FastAPI, HTTPX, Postgres, settings). Optional extras such as `embed-openai`, `embed-ollama`, `embed-huggingface` and `redis` pull in vendor-specific stacks.
 
 If you want to avoid those stacks, or you already host embeddings elsewhere, implement a small class against **`BaseEmbedder`** and pass it into **`SemanticCache(embedder=...)`**. No embedding extra is required for that path.
 
