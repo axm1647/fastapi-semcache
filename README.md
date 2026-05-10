@@ -27,13 +27,14 @@ Optional extras:
 - `redis`: Async Redis client (`redis>=7.4.0`) for TTL-backed response blobs when **`SEMANTIC_CACHE_REDIS_URI`** is set. Core installs omit it so Postgres-only deployments avoid pulling Redis.
 - `embed-huggingface`: Sentence Transformers and PyTorch. Default PyPI wheels are **CPU**; for CUDA, install with PyTorch's `--extra-index-url` ([below](#hugging-face--sentence-transformers)).
 - `embed-openai`: OpenAI embeddings (`openai`, `tiktoken`).
+- `embed-voyage`: Voyage AI embeddings (`voyageai`, `aiohttp`).
 - `embed-ollama`: Ollama embeddings via the OpenAI-compatible HTTP API (`openai` only).
 
 Dependency notes:
 
 - Core `fastapi-semcache` has no LangChain dependency.
 - Core does **not** include the `redis` PyPI package; use **`pip install "fastapi-semcache[redis]"`** whenever you configure a non-empty Redis URI (otherwise the first Redis use raises `ImportError` with an install hint).
-- Optional extras only add their listed packages (`redis`, `sentence-transformers`/`torch`, `openai`/`tiktoken`, or `openai` alone for `embed-ollama`).
+- Optional extras only add their listed packages (`redis`, `sentence-transformers`/`torch`, `openai`/`tiktoken`, `voyageai`/`aiohttp`, or `openai` alone for `embed-ollama`).
 
 ### Hugging Face / Sentence Transformers
 
@@ -56,9 +57,17 @@ Install the OpenAI extra so `embedder_type="openai"` works (pulls `openai` and `
 pip install "fastapi-semcache[embed-openai]"
 ```
 
+### Voyage embeddings
+
+Install the Voyage extra so `embedder_type="voyage"` works (pulls `voyageai` and `aiohttp`). Set **`VOYAGE_API_KEY`** or **`SEMANTIC_CACHE_VOYAGE_API_KEY`**. Optional **`SEMANTIC_CACHE_VOYAGE_EMBEDDING_MODEL`** and **`SEMANTIC_CACHE_VOYAGE_EMBEDDING_DIMENSIONS`** default to **`voyage-4`** and **`1024`** when unset (they must match your chosen model and pgvector column width). Set **`SEMANTIC_CACHE_VOYAGE_INPUT_TYPE`** to **`query`** or **`document`** when you want Voyage’s input-type hint on each request.
+
+```bash
+pip install "fastapi-semcache[embed-voyage]"
+```
+
 ### Ollama embeddings
 
-Install the Ollama extra so `embedder_type="ollama"` works (pulls `openai` only). Set **`SEMANTIC_CACHE_OLLAMA_EMBEDDING_MODEL`** and **`SEMANTIC_CACHE_OLLAMA_EMBEDDING_DIMENSIONS`** to match the embedding model you run (dimensions must match pgvector). Optionally set **`SEMANTIC_CACHE_OLLAMA_BASE_URL`** (default `http://127.0.0.1:11434/v1`) and **`OLLAMA_API_KEY`** when your server uses auth.
+Install the Ollama extra so `embedder_type="ollama"` works (pulls `openai` only). Set **`SEMANTIC_CACHE_OLLAMA_EMBEDDING_MODEL`** and **`SEMANTIC_CACHE_OLLAMA_EMBEDDING_DIMENSIONS`** to match the embedding model you run (dimensions must match pgvector). Optionally set **`SEMANTIC_CACHE_OLLAMA_BASE_URL`** (default `http://127.0.0.1:11434/v1`) and **`OLLAMA_API_KEY`** or **`SEMANTIC_CACHE_OLLAMA_API_KEY`** when your server uses auth.
 
 ```bash
 pip install "fastapi-semcache[embed-ollama]"
@@ -72,7 +81,7 @@ Install the Redis extra when **`SEMANTIC_CACHE_REDIS_URI`** (or constructor **`r
 pip install "fastapi-semcache[redis]"
 ```
 
-You can combine extras, for example **`pip install "fastapi-semcache[redis,embed-openai]"`**.
+You can combine extras, for example **`pip install "fastapi-semcache[redis,embed-openai]"`** or **`pip install "fastapi-semcache[redis,embed-voyage]"`**.
 
 ## FastAPI middleware
 
@@ -224,6 +233,12 @@ Today the middleware **buffers the full downstream response** before sending it 
   `embed-openai` and set `OPENAI_API_KEY`). Use
   `OpenAIEmbedder(..., send_dimensions_to_api=False)` when the model has a fixed
   output size and the API must not get a `dimensions` field.
+- **Voyage AI embeddings** via aiohttp and the Voyage REST API (`embedder_type="voyage"`;
+  install `embed-voyage` and set a Voyage API key). Defaults match **`VoyageEmbedder`**
+  in code (`voyage-4`, 1024 dimensions) when model and dimensions are not set in env.
+- **Ollama embeddings** via the OpenAI-compatible **`/v1/embeddings`** endpoint
+  (`embedder_type="ollama"`; install `embed-ollama`). Model id and vector dimensions are
+  required in settings so pgvector storage matches the running model.
 - **PostgreSQL + pgvector** for semantic similarity lookup. The library creates a
   dedicated cache table per embedder configuration (derived from model id and vector
   dimension) on first use, so you are not tied to a single hard-coded vector width.
@@ -242,7 +257,6 @@ Today the middleware **buffers the full downstream response** before sending it 
 Embeddings from the following providers are planned:
 
 - **Cohere**
-- **Voyage**
 
 ## Requirements
 
