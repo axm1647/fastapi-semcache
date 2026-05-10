@@ -94,7 +94,7 @@ Redis key when Redis is enabled) so one bad row cannot force repeated misses.
 
 **Trust boundary:** Header and JSON scope values are only safe isolation boundaries when your deployment sets them (for example from verified JWT claims at the edge) or overwrites untrusted client fields before they reach this middleware. Otherwise a client can pick another tenant id and probe for cache hits; always derive scope from authenticated identity in multi-tenant systems.
 
-**Settings alignment:** `SemanticCacheMiddleware` applies `require_cache_scope` and the gate for “missing scope” using **`SemanticCache.settings`** when the `cache` argument is a real `SemanticCache` instance. `cache_settings` still controls circuit breaker and flight-lock limits. Avoid passing a different `require_cache_scope` only via `cache_settings` while using a `SemanticCache` with conflicting settings.
+**Settings alignment:** `SemanticCacheMiddleware` applies `require_cache_scope` and the gate for “missing scope” using **`SemanticCache.settings`** when the `cache` argument is a real `SemanticCache` instance. `cache_settings` still controls circuit breaker, flight-lock limits, and the `cache_authorized_requests` gate. Avoid passing a different `require_cache_scope` only via `cache_settings` while using a `SemanticCache` with conflicting settings. When both sources are supplied and disagree on `require_cache_scope` or `cache_authorized_requests`, the middleware logs a warning at startup naming the field and both values so the misconfiguration is visible without breaking the app.
 
 Integer **`tenant_id`** (JSON number) is accepted and normalized to a string for storage keys.
 

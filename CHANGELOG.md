@@ -19,11 +19,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`RedisResponseStore`** / **`SemanticCache`**: when **`store_timeout_seconds`** is set, configure **`socket_timeout`** and **`socket_connect_timeout`** on **`redis.asyncio.from_url`** to match so stalled Redis TCP or reads align with the asyncio store timeout instead of relying only on **`wait_for`**.
 - **`SemanticCacheMiddleware`**: detect **`Set-Cookie`** via raw response headers before storing responses so multi-cookie or sparse header mappings cannot cache session-bearing responses.
 - **`SemanticCacheMiddleware`**: decide at initialization whether ``cache.put`` accepts ``query_embedding`` (via ``inspect.signature`` on ``SemanticCache`` or duck-typed caches) instead of catching ``TypeError`` and matching the exception message when storing.
+- **`SemanticCacheMiddleware`**: when both **`cache_settings`** and **`cache.settings`** are supplied and disagree on **`require_cache_scope`** or **`cache_authorized_requests`**, log a warning naming the field and both values so the split-source misconfiguration is visible at startup. The middleware still starts and applies the documented precedence.
 
 ### Documentation
 
 - **`docs/cache-tuning.md`**: request and response body size limits for **`SemanticCacheMiddleware`**; Stage 1 notes that Postgres applies the primary threshold before ``LIMIT``; saturated flight lock registry (LRU behavior when all older locks are held, deduplication gap, critical log); Redis **`from_url`** socket timeouts when **`SEMANTIC_CACHE_STORE_TIMEOUT_SECONDS`** is set; duck-typed ``cache.put`` and ``query_embedding`` detection at middleware startup.
 - **`docs/cache-tuning.md`**: unreplayable similarity hits when the replay marker or **`body`** / **`meta`** envelope is missing; **Scope key and Redis layout** replaces older **`scope_key`** migration wording with a short operational description (**`require_cache_scope`** and shared bucket behavior).
+- **`docs/cache-tuning.md`**: settings alignment now notes that **`cache_settings`** also governs **`cache_authorized_requests`** and that the middleware emits a startup warning when split sources disagree.
 
 ## [0.2.22] - 2026-05-10
 
