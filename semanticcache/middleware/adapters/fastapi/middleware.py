@@ -179,7 +179,10 @@ class SemanticCacheMiddleware:
                 does), ``require_cache_scope`` and the middleware scope gate use it so
                 they stay aligned with ``SemanticCache``; otherwise ``cache_settings``
                 applies. This source also controls whether requests that include an
-                ``Authorization`` header are cacheable.
+                ``Authorization`` header are cacheable. When both ``cache_settings``
+                and ``cache.settings`` are provided and disagree on user-facing flags
+                (``require_cache_scope`` or ``cache_authorized_requests``), a warning
+                is logged so a likely misconfiguration is visible at startup.
             max_request_body_bytes: Maximum size of the buffered request body (default
                 ``DEFAULT_MAX_BODY_BYTES``, 10 MiB). When exceeded, the client receives
                 HTTP 413. Set to ``None`` to disable the limit (not recommended in
@@ -193,9 +196,9 @@ class SemanticCacheMiddleware:
         self.app = app
         self._cache = cache
         put_method = getattr(cache, "put", None)
-        self._cache_put_accepts_query_embedding = isinstance(
-            cache, SemanticCache
-        ) or (callable(put_method) and _put_accepts_query_embedding_kwarg(put_method))
+        self._cache_put_accepts_query_embedding = callable(
+            put_method
+        ) and _put_accepts_query_embedding_kwarg(put_method)
         self._enabled = enabled
         self._path_prefix = path_prefix
         self._methods = frozenset(m.upper() for m in (methods or ("POST",)))
@@ -210,6 +213,11 @@ class SemanticCacheMiddleware:
         )
         self._cache_settings = resolved
         cache_settings_obj = getattr(cache, "settings", None)
+        if cache_settings is not None and cache_settings_obj is not None:
+            self._warn_on_settings_mismatch(
+                middleware_settings=cache_settings,
+                cache_settings=cache_settings_obj,
+            )
         if cache_settings_obj is not None:
             self._scope_settings = cache_settings_obj
             self._require_cache_scope = cache_settings_obj.require_cache_scope
@@ -225,6 +233,47 @@ class SemanticCacheMiddleware:
         self._cache_authorized_requests = resolved.cache_authorized_requests
         self._max_request_body_bytes = max_request_body_bytes
         self._max_response_body_bytes = max_response_body_bytes
+
+    @staticmethod
+    def _warn_on_settings_mismatch(
+        *,
+        middleware_settings: CacheSettings,
+        cache_settings: CacheSettings,
+    ) -> None:
+        """Log a warning when split ``CacheSettings`` sources disagree.
+
+        ``SemanticCacheMiddleware`` reads ``require_cache_scope`` from
+        ``cache.settings`` and ``cache_authorized_requests`` (plus the circuit
+        breaker and flight-lock options) from the ``cache_settings`` kwarg.
+        When both sources are supplied and disagree on user-facing flags, the
+        split is almost always a configuration mistake (for example, the
+        middleware permits caching authorized requests but the cache enforces
+        scope, or vice versa). We warn rather than raise so applications that
+        intentionally split these can still start.
+
+        Args:
+            middleware_settings: ``CacheSettings`` passed via the middleware
+                ``cache_settings`` kwarg.
+            cache_settings: ``CacheSettings`` exposed on the ``SemanticCache``
+                instance (``cache.settings``).
+        """
+        mismatched_fields = ("require_cache_scope", "cache_authorized_requests")
+        for field_name in mismatched_fields:
+            middleware_value = getattr(middleware_settings, field_name)
+            cache_value = getattr(cache_settings, field_name)
+            if middleware_value != cache_value:
+                _logger.warning(
+                    "SemanticCacheMiddleware settings mismatch: "
+                    "cache_settings.%s=%r (middleware kwarg) differs from "
+                    "cache.settings.%s=%r. cache.settings is used for the "
+                    "scope gate, while cache_settings controls the circuit "
+                    "breaker, flight lock, and Authorization gating. "
+                    "Confirm the split is intentional or align the two sources.",
+                    field_name,
+                    middleware_value,
+                    field_name,
+                    cache_value,
+                )
 
     async def _default_extract_model(self, request: Request, body: bytes) -> str | None:
         """Read model from header or JSON body.
@@ -660,7 +709,9 @@ class SemanticCacheMiddleware:
             detail = exc.detail
             text = (
                 detail
-                if isinstance(detail, str)
+                if isinstance(  # pyright: ignore[reportUnnecessaryIsInstance] -- FastAPI widens HTTPException.detail
+                    detail, str
+                )
                 else "Request body exceeds configured maximum size."
             )
             await self._send_response(
