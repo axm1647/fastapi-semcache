@@ -46,6 +46,7 @@ async def extract_scope(request, body: bytes) -> str | None:
 For privacy and HTTP cache-safety alignment, middleware also skips cache writes when upstream responds with `Cache-Control: no-store`, `Cache-Control: private`, or any `Set-Cookie` header.
 
 Middleware also bypasses cache reads and writes for requests that include an `Authorization` header unless you explicitly opt in with `SEMANTIC_CACHE_CACHE_AUTHORIZED_REQUESTS=true` (`CacheSettings.cache_authorized_requests`). This default reduces accidental reuse of per-user responses across authenticated callers.
+This is especially important for reverse-proxy deployments because upstream APIs often require `Authorization`; without this setting those requests always miss and never write cache entries.
 
 ### Request and response body size limits
 

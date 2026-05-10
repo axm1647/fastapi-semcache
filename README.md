@@ -203,6 +203,8 @@ Run with `uvicorn mymodule:app --host 0.0.0.0 --port 8080`.
 
 This repository includes a small ASGI app at `app/main.py` (import `app` for uvicorn). Set **`SEMANTIC_CACHE_PROXY_UPSTREAM`** to the backend base URL; the default is `http://127.0.0.1:11434`. For semantic caching in front of a single trusted upstream, set **`SEMANTIC_CACHE_REQUIRE_CACHE_SCOPE=false`** unless you forward a tenant header or JSON scope from clients.
 
+If your upstream requires an `Authorization` header (for example OpenAI-compatible APIs), set **`SEMANTIC_CACHE_CACHE_AUTHORIZED_REQUESTS=true`** or the middleware will bypass cache reads and writes for those requests.
+
 ```bash
 uv run uvicorn app.main:app --host 0.0.0.0 --port 8080
 ```

@@ -3,6 +3,10 @@
 Run from the repo root with Postgres (pgvector) and optional Redis configured via
 ``SEMANTIC_CACHE_*`` env vars. Clients send ``Authorization: Bearer ...``; the proxy
 forwards headers to the upstream so your OpenAI key reaches ``api.openai.com``.
+Because the middleware bypasses cache for authorized requests by default, set
+``SEMANTIC_CACHE_CACHE_AUTHORIZED_REQUESTS=true`` (or pass
+``CacheSettings(cache_authorized_requests=True)``) when running this proxy if you
+want requests with ``Authorization`` to produce cache hits.
 
 Example:
 
@@ -25,6 +29,8 @@ from semanticcache import (
 if TYPE_CHECKING:
     from fastapi import FastAPI
 
+# Proxy traffic usually includes Authorization headers. Opt in with
+# SEMANTIC_CACHE_CACHE_AUTHORIZED_REQUESTS=true if you want those requests cached.
 cache = SemanticCache(settings=get_cache_settings())
 upstream = "https://api.openai.com/v1"
 
