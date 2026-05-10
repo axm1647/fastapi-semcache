@@ -85,11 +85,12 @@ still returning the upstream response to the caller.
 ### Unreplayable similarity hits
 
 When ANN search returns a row but the stored JSON is not a replayable response (for
-example the middleware marker is set but `body` is not a JSON object),
+example the replay marker is set but `body` is not a JSON object, or the marker and
+`body` / `meta` envelope are missing),
 `SemanticCacheMiddleware` logs a warning, treats the lookup as a miss, and calls
 downstream. If the cache backend is `SemanticCache` and `CacheResult` includes
 `cache_entry_id`, the middleware also deletes that Postgres row (and the matching
-Redis key when Redis is enabled) so one corrupt entry cannot force repeated misses.
+Redis key when Redis is enabled) so one bad row cannot force repeated misses.
 
 **Trust boundary:** Header and JSON scope values are only safe isolation boundaries when your deployment sets them (for example from verified JWT claims at the edge) or overwrites untrusted client fields before they reach this middleware. Otherwise a client can pick another tenant id and probe for cache hits; always derive scope from authenticated identity in multi-tenant systems.
 
@@ -101,9 +102,9 @@ Integer **`tenant_id`** (JSON number) is accepted and normalized to a string for
 
 Middleware in-flight lock keys also include the resolved **scope** string so concurrent misses for different tenants are not serialized together.
 
-### Upgrading and operations
+### Scope key and Redis layout
 
-Adding **`scope_key`** changes how Postgres rows match and reshapes Redis key segments (extra scope bucket hash before the model segment). After upgrading, expect older Redis entries not to be reused until they expire; pgvector rows created before migration keep `scope_key = ''`, which only participates in lookups when `require_cache_scope` is false (legacy shared bucket). Turning **`require_cache_scope`** on in an existing deployment effectively starts fresh tenant partitions until new responses are cached.
+**`scope_key`** affects Postgres matching and Redis key segments (an extra scope bucket hash appears before the model segment). Rows with `scope_key = ''` are looked up only when `require_cache_scope` is false (one shared bucket). When **`require_cache_scope`** is true, each normalized scope string is its own partition.
 
 ### Stage 1: nearest-neighbor search (top-k)
 

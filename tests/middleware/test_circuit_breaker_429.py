@@ -24,6 +24,28 @@ _LLM_BODY: dict[str, list[dict[str, str]] | str] = {
     "messages": [{"role": "user", "content": "circuit breaker probe"}],
 }
 
+_CACHE_RECORD_MARKER = "__semanticcache_record_v1__"
+
+
+def _wrapped_hit_payload(body: dict[str, object]) -> dict[str, object]:
+    """Build a cache hit payload in middleware replay envelope form.
+
+    Args:
+        body: JSON object served as the HTTP response body on replay.
+
+    Returns:
+        Stored row shape including marker, body, and replay metadata.
+    """
+    return {
+        _CACHE_RECORD_MARKER: True,
+        "body": body,
+        "meta": {
+            "status_code": 200,
+            "headers": {},
+            "media_type": "application/json",
+        },
+    }
+
 
 class _FakeSemanticCache:
     """Minimal async cache; set ``hit`` to True to force preflight hits."""
@@ -45,7 +67,7 @@ class _FakeSemanticCache:
                 is_hit=True,
                 similarity=0.99,
                 source="embedders.sbert",
-                response={"cached": True},
+                response=_wrapped_hit_payload({"cached": True}),
             )
         return CacheResult(
             is_hit=False,

@@ -421,7 +421,7 @@ class SemanticCache:
 
         Removes the Postgres row and the matching Redis response key when Redis is
         enabled. Used when middleware detects a vector hit whose payload cannot be
-        replayed (corrupt or legacy shape) so the bad row does not match forever.
+        replayed (corrupt payload or missing replay envelope) so the bad row does not match forever.
 
         Args:
             entry_id: Primary key ``id`` from ``CacheResult.cache_entry_id``.

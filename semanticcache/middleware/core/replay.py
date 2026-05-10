@@ -123,8 +123,11 @@ def response_from_cache_hit(
         similarity_header_name: Header key for similarity metadata.
 
     Returns:
-        Response with original status and headers when metadata exists.
-        Returns None when hit payload is not replayable.
+        Response with original status and headers when the stored record uses the
+        replay envelope (marker key plus ``body`` and ``meta``).
+
+        Returns None when the hit payload is not replayable (missing envelope or
+        invalid ``body``), so status and headers cannot be reconstructed safely.
     """
     cached_payload = result.response
     if cached_payload is None:
@@ -160,7 +163,4 @@ def response_from_cache_hit(
             headers=headers,
             media_type=media_type,
         )
-    return JSONResponse(
-        content=cached_payload,
-        headers=hit_headers,
-    )
+    return None

@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`SemanticCacheMiddleware`** / **`response_from_cache_hit`**: similarity hits whose stored JSON omits the **`__semanticcache_record_v1__`** replay envelope (marker plus **`body`** and **`meta`**) are no longer answered as **HTTP 200** with no way to restore the original status code or headers. They are treated like other unreplayable hits (warning log, miss path, and Postgres or Redis eviction when **`SemanticCache`** supplies **`cache_entry_id`**).
 - **`AsyncPgVectorStore.similarity_search_top_k`**: apply the similarity threshold in SQL before ``LIMIT`` so top-k retrieval considers only rows at or above the threshold (not the first k neighbors by distance).
 - **`RedisResponseStore`** / **`SemanticCache`**: when **`store_timeout_seconds`** is set, configure **`socket_timeout`** and **`socket_connect_timeout`** on **`redis.asyncio.from_url`** to match so stalled Redis TCP or reads align with the asyncio store timeout instead of relying only on **`wait_for`**.
 - **`SemanticCacheMiddleware`**: detect **`Set-Cookie`** via raw response headers before storing responses so multi-cookie or sparse header mappings cannot cache session-bearing responses.
@@ -22,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Documentation
 
 - **`docs/cache-tuning.md`**: request and response body size limits for **`SemanticCacheMiddleware`**; Stage 1 notes that Postgres applies the primary threshold before ``LIMIT``; saturated flight lock registry (LRU behavior when all older locks are held, deduplication gap, critical log); Redis **`from_url`** socket timeouts when **`SEMANTIC_CACHE_STORE_TIMEOUT_SECONDS`** is set; duck-typed ``cache.put`` and ``query_embedding`` detection at middleware startup.
+- **`docs/cache-tuning.md`**: unreplayable similarity hits when the replay marker or **`body`** / **`meta`** envelope is missing; **Scope key and Redis layout** replaces older **`scope_key`** migration wording with a short operational description (**`require_cache_scope`** and shared bucket behavior).
 
 ## [0.2.22] - 2026-05-10
 

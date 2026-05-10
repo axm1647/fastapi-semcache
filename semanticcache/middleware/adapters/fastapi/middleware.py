@@ -473,8 +473,9 @@ class SemanticCacheMiddleware:
             result: Cache lookup output with payload and similarity metadata.
 
         Returns:
-            Response with original status and headers when metadata exists.
-            Returns None when hit payload is not replayable.
+            Response with original status and headers when the stored record uses
+            the replay envelope. Returns None when the hit payload is not
+            replayable (for example missing the replay envelope).
         """
         return response_from_cache_hit(
             result=result,

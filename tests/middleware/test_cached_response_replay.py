@@ -63,6 +63,76 @@ class _MemoryCache:
         _ = scope
 
 
+class _UnwrappedPayloadEvictionCache:
+    """Serve a similarity hit without replay envelope, then miss until ``put`` stores wrapped rows."""
+
+    MARKER = "__semanticcache_record_v1__"
+
+    def __init__(self) -> None:
+        """Initialize eviction bookkeeping for plain-body hits."""
+        self.entry_id = 200
+        self.deleted_ids: list[int] = []
+        self._plain_hit_cleared = False
+        self._wrapped: dict[str, object] | None = None
+
+    async def get(
+        self,
+        query: str,
+        model: str | None = None,
+        *,
+        scope: str | None = None,
+        storage_scope_key: str | None = None,
+    ) -> CacheResult:
+        _ = query, model, scope, storage_scope_key
+        if self._wrapped is not None:
+            return CacheResult(
+                is_hit=True,
+                similarity=0.97,
+                source="none",
+                cache_entry_id=self.entry_id,
+                response=self._wrapped,
+            )
+        if self._plain_hit_cleared:
+            return CacheResult(
+                is_hit=False,
+                query_embedding=[0.25, 0.25, 0.25, 0.25],
+            )
+        return CacheResult(
+            is_hit=True,
+            similarity=0.95,
+            source="none",
+            cache_entry_id=self.entry_id,
+            response={"plain_body": True},
+        )
+
+    async def put(
+        self,
+        query: str,
+        response: dict[str, object],
+        model: str | None = None,
+        *,
+        scope: str | None = None,
+        storage_scope_key: str | None = None,
+        query_embedding: list[float] | None = None,
+    ) -> None:
+        _ = query, model, scope, storage_scope_key, query_embedding
+        self._wrapped = response
+
+    async def delete_entry_by_id(
+        self,
+        entry_id: int,
+        *,
+        model: str | None = None,
+        scope: str | None = None,
+        storage_scope_key: str | None = None,
+    ) -> bool:
+        """Mark plain-body hit removed after eviction."""
+        _ = model, scope, storage_scope_key
+        self.deleted_ids.append(entry_id)
+        self._plain_hit_cleared = True
+        return True
+
+
 class _CorruptHitEvictionCache:
     """Return a miss once, then an unreplayable hit until eviction clears storage."""
 
@@ -129,6 +199,38 @@ class _CorruptHitEvictionCache:
         self._stored = None
         self.entry_id += 1
         return True
+
+
+def test_plain_json_hit_without_envelope_is_evicted_and_rewrapped_on_miss() -> None:
+    """Similarity hits without replay envelope are not served; eviction allows a wrapped store."""
+    app = FastAPI()
+    cache = _UnwrappedPayloadEvictionCache()
+    calls = {"count": 0}
+
+    @app.post("/v1/chat")
+    async def _route() -> JSONResponse:
+        calls["count"] += 1
+        return JSONResponse(status_code=201, content={"created": True})
+
+    app.add_middleware(
+        SemanticCacheMiddleware,
+        cache=cast(SemanticCache, cache),
+    )
+
+    with TestClient(app) as client:
+        first = client.post("/v1/chat", json={"query": "hi", "cache_scope": "tenant-a"})
+        second = client.post(
+            "/v1/chat",
+            json={"query": "hi", "cache_scope": "tenant-a"},
+        )
+
+    assert first.status_code == 201
+    assert first.headers.get("X-Cache") == "MISS"
+    assert second.status_code == 201
+    assert second.headers.get("X-Cache") == "HIT"
+    assert second.json() == {"created": True}
+    assert calls["count"] == 1
+    assert cache.deleted_ids == [200]
 
 
 def test_unreplayable_hit_is_logged_evicted_and_calls_upstream() -> None:
