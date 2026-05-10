@@ -404,7 +404,62 @@ class SemanticCache:
             similarity=chosen_entry.similarity,
             source=src,
             response=response,
+            cache_entry_id=chosen_entry.id,
         )
+
+    async def delete_entry_by_id(
+        self,
+        entry_id: int,
+        *,
+        model: str | None = None,
+        scope: str | None = None,
+        storage_scope_key: str | None = None,
+    ) -> bool:
+        """Delete one stored row by id within the model and scope buckets.
+
+        Removes the Postgres row and the matching Redis response key when Redis is
+        enabled. Used when middleware detects a vector hit whose payload cannot be
+        replayed (corrupt or legacy shape) so the bad row does not match forever.
+
+        Args:
+            entry_id: Primary key ``id`` from ``CacheResult.cache_entry_id``.
+            model: Logical model bucket; must match the hit row.
+            scope: Raw scope when ``storage_scope_key`` is not used.
+            storage_scope_key: Pre-resolved scope bucket from ``resolve_cache_scope``.
+
+        Returns:
+            True when the Postgres row was deleted, False when scope resolution failed
+            or no row matched ``entry_id`` in that bucket.
+        """
+        model_key = _normalize_model_key(model)
+        scope_key = _resolve_scope_key_for_storage(
+            scope=scope,
+            storage_scope_key=storage_scope_key,
+            settings=self._settings,
+        )
+        if scope_key is None:
+            return False
+        await self._ensure_open()
+        deleted = await self._with_timeout(
+            operation="db_delete_by_id",
+            timeout_seconds=self._store_timeout_seconds,
+            work=self._vector_store.delete_by_id(
+                entry_id,
+                model_key=model_key,
+                scope_key=scope_key,
+            ),
+        )
+        if self._redis_store is not None:
+            redis_key = (
+                f"{self._redis_key_prefix}:{_redis_bucket_segment(scope_key)}:"
+                f"{_redis_bucket_segment(model_key)}:{entry_id}"
+            )
+            await self._with_timeout(
+                operation="redis_delete",
+                timeout_seconds=self._store_timeout_seconds,
+                work=self._redis_store.delete(redis_key),
+            )
+        return deleted > 0
 
     async def put(
         self,

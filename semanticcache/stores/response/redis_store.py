@@ -130,3 +130,12 @@ class RedisResponseStore:
             await r.set(fk, payload, ex=int(ttl))
         else:
             await r.set(fk, payload)
+
+    async def delete(self, key: str) -> None:
+        """Remove the stored JSON value for a logical key when present.
+
+        Args:
+            key: Logical key without the configured prefix.
+        """
+        r = self._client_or_create()
+        await r.delete(self._full_key(key))

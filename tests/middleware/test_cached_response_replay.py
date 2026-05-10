@@ -62,6 +62,105 @@ class _MemoryCache:
         _ = scope
 
 
+class _CorruptHitEvictionCache:
+    """Return a miss once, then an unreplayable hit until eviction clears storage."""
+
+    MARKER = "__semanticcache_record_v1__"
+
+    def __init__(self) -> None:
+        """Initialize empty storage and eviction bookkeeping."""
+        self._stored: dict[str, object] | None = None
+        self.entry_id = 100
+        self.deleted_ids: list[int] = []
+
+    async def get(
+        self,
+        query: str,
+        model: str | None = None,
+        *,
+        scope: str | None = None,
+        storage_scope_key: str | None = None,
+    ) -> CacheResult:
+        _ = query, model, scope
+        if self._stored is None:
+            return CacheResult(
+                is_hit=False,
+                query_embedding=[0.25, 0.25, 0.25, 0.25],
+            )
+        return CacheResult(
+            is_hit=True,
+            similarity=0.95,
+            source="none",
+            cache_entry_id=self.entry_id,
+            response=cast(
+                dict[str, object],
+                {
+                    self.MARKER: True,
+                    "body": ["not", "a", "dict"],
+                },
+            ),
+        )
+
+    async def put(
+        self,
+        query: str,
+        response: dict[str, object],
+        model: str | None = None,
+        *,
+        scope: str | None = None,
+        storage_scope_key: str | None = None,
+        query_embedding: list[float] | None = None,
+    ) -> None:
+        _ = query, model, scope, storage_scope_key, query_embedding
+        self._stored = response
+
+    async def delete_entry_by_id(
+        self,
+        entry_id: int,
+        *,
+        model: str | None = None,
+        scope: str | None = None,
+        storage_scope_key: str | None = None,
+    ) -> bool:
+        """Record eviction and clear stored payload for subsequent misses."""
+        _ = model, scope, storage_scope_key
+        self.deleted_ids.append(entry_id)
+        self._stored = None
+        self.entry_id += 1
+        return True
+
+
+def test_unreplayable_hit_is_logged_evicted_and_calls_upstream() -> None:
+    """Corrupt replay-shaped rows are removed and the handler runs as on miss."""
+    app = FastAPI()
+    cache = _CorruptHitEvictionCache()
+    calls = {"count": 0}
+
+    @app.post("/v1/chat")
+    async def _route() -> JSONResponse:
+        calls["count"] += 1
+        return JSONResponse({"ok": True})
+
+    app.add_middleware(
+        SemanticCacheMiddleware,
+        cache=cast(SemanticCache, cache),
+    )
+
+    with TestClient(app) as client:
+        first = client.post("/v1/chat", json={"query": "hi", "cache_scope": "tenant-a"})
+        second = client.post(
+            "/v1/chat",
+            json={"query": "hi", "cache_scope": "tenant-a"},
+        )
+
+    assert first.status_code == 200
+    assert first.headers.get("X-Cache") == "MISS"
+    assert second.status_code == 200
+    assert second.headers.get("X-Cache") == "MISS"
+    assert calls["count"] == 2
+    assert cache.deleted_ids == [100]
+
+
 def test_cache_hit_replays_status_and_response_metadata() -> None:
     """Replay upstream status code and headers for cached JSON responses."""
     app = FastAPI()

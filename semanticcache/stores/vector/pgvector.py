@@ -202,6 +202,32 @@ class AsyncPgVectorStore:
                     raise RuntimeError(msg)
                 return int(row[0])
 
+    async def delete_by_id(
+        self,
+        entry_id: int,
+        *,
+        model_key: str = "",
+        scope_key: str = "",
+    ) -> int:
+        """Delete a single row when its id matches the model and scope buckets.
+
+        Args:
+            entry_id: Primary key of the row to remove.
+            model_key: Row filter; must match the row's ``model_key`` column.
+            scope_key: Row filter; must match the row's ``scope_key`` column.
+
+        Returns:
+            Number of rows deleted (0 or 1).
+        """
+        tbl = sql.Identifier(self._table_name)
+        stmt = sql.SQL(
+            "DELETE FROM {tbl} WHERE id = %s AND model_key = %s AND scope_key = %s"
+        ).format(tbl=tbl)
+        async with self._pool.connection() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(stmt, (entry_id, model_key, scope_key))
+                return int(cur.rowcount or 0)
+
     async def similarity_search_top_k(
         self,
         query_embedding: list[float],

@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from typing import TYPE_CHECKING
 
@@ -53,6 +54,8 @@ from ...core.replay import (
 
 if TYPE_CHECKING:
     from ....config import CacheSettings
+
+_logger = logging.getLogger(__name__)
 
 
 class SemanticCacheMiddleware:
@@ -506,6 +509,41 @@ class SemanticCacheMiddleware:
                 storage_scope_key=storage_scope_key,
             )
 
+    async def _evict_unreplayable_cache_row(
+        self,
+        result: CacheResult,
+        *,
+        model: str | None,
+        raw_scope: str | None,
+        storage_scope_key: str,
+    ) -> None:
+        """Remove stored rows when a similarity hit cannot be serialized to clients.
+
+        Args:
+            result: Lookup outcome that was a hit but failed replay conversion.
+            model: Extracted model discriminator for the bucket.
+            raw_scope: Extracted scope before normalization, if any.
+            storage_scope_key: Resolved scope key passed to ``SemanticCache``.
+        """
+        entry_id = result.cache_entry_id
+        if entry_id is None:
+            return
+        delete_fn = getattr(self._cache, "delete_entry_by_id", None)
+        if delete_fn is None:
+            return
+        try:
+            await delete_fn(
+                entry_id,
+                model=model,
+                scope=raw_scope,
+                storage_scope_key=storage_scope_key,
+            )
+        except Exception:
+            _logger.exception(
+                "Eviction failed for unreplayable cache hit entry_id=%s",
+                entry_id,
+            )
+
     async def __call__(
         self,
         scope: Scope,
@@ -622,6 +660,12 @@ class SemanticCacheMiddleware:
                 result=res
             ),
             send_response=self._send_response,
+            on_unreplayable_hit=lambda res: self._evict_unreplayable_cache_row(
+                res,
+                model=model,
+                raw_scope=raw_scope,
+                storage_scope_key=scope_storage,
+            ),
         ):
             return
 
@@ -644,6 +688,12 @@ class SemanticCacheMiddleware:
                     result=res
                 ),
                 send_response=self._send_response,
+                on_unreplayable_hit=lambda res: self._evict_unreplayable_cache_row(
+                    res,
+                    model=model,
+                    raw_scope=raw_scope,
+                    storage_scope_key=scope_storage,
+                ),
             ):
                 return
 

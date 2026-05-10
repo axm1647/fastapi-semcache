@@ -72,6 +72,15 @@ app.add_middleware(
 Returning `False`, or raising from the validator, skips the cache write while
 still returning the upstream response to the caller.
 
+### Unreplayable similarity hits
+
+When ANN search returns a row but the stored JSON is not a replayable response (for
+example the middleware marker is set but `body` is not a JSON object),
+`SemanticCacheMiddleware` logs a warning, treats the lookup as a miss, and calls
+downstream. If the cache backend is `SemanticCache` and `CacheResult` includes
+`cache_entry_id`, the middleware also deletes that Postgres row (and the matching
+Redis key when Redis is enabled) so one corrupt entry cannot force repeated misses.
+
 **Trust boundary:** Header and JSON scope values are only safe isolation boundaries when your deployment sets them (for example from verified JWT claims at the edge) or overwrites untrusted client fields before they reach this middleware. Otherwise a client can pick another tenant id and probe for cache hits; always derive scope from authenticated identity in multi-tenant systems.
 
 **Settings alignment:** `SemanticCacheMiddleware` applies `require_cache_scope` and the gate for “missing scope” using **`SemanticCache.settings`** when the `cache` argument is a real `SemanticCache` instance. `cache_settings` still controls circuit breaker and flight-lock limits. Avoid passing a different `require_cache_scope` only via `cache_settings` while using a `SemanticCache` with conflicting settings.
