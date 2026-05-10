@@ -6,6 +6,12 @@ On cache misses handled by `SemanticCacheMiddleware`, the embedding computed dur
 `get()` is now reused by `put()` for the same request. This removes one embedder
 call per miss, reducing latency and external embedding API cost.
 
+When you pass a duck-typed `cache` (not a real `SemanticCache`), implement
+`put(..., *, query_embedding=...)` when you want that reuse. At startup the
+middleware inspects `cache.put` and only omits `query_embedding` if the signature
+does not accept it, so storage does not rely on fragile runtime `TypeError`
+string checks.
+
 ### Model-scoped storage
 
 `SemanticCache.get` and `SemanticCache.put` accept an optional **`model`** string (for example an LLM id from JSON or a header). The value is normalized (stripped; `None` or blank becomes the **default bucket**, `model_key=""`). Lookup and writes are scoped:

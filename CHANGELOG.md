@@ -17,10 +17,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`AsyncPgVectorStore.similarity_search_top_k`**: apply the similarity threshold in SQL before ``LIMIT`` so top-k retrieval considers only rows at or above the threshold (not the first k neighbors by distance).
 - **`RedisResponseStore`** / **`SemanticCache`**: when **`store_timeout_seconds`** is set, configure **`socket_timeout`** and **`socket_connect_timeout`** on **`redis.asyncio.from_url`** to match so stalled Redis TCP or reads align with the asyncio store timeout instead of relying only on **`wait_for`**.
 - **`SemanticCacheMiddleware`**: detect **`Set-Cookie`** via raw response headers before storing responses so multi-cookie or sparse header mappings cannot cache session-bearing responses.
+- **`SemanticCacheMiddleware`**: decide at initialization whether ``cache.put`` accepts ``query_embedding`` (via ``inspect.signature`` on ``SemanticCache`` or duck-typed caches) instead of catching ``TypeError`` and matching the exception message when storing.
 
 ### Documentation
 
-- **`docs/cache-tuning.md`**: request and response body size limits for **`SemanticCacheMiddleware`**; Stage 1 notes that Postgres applies the primary threshold before ``LIMIT``; saturated flight lock registry (LRU behavior when all older locks are held, deduplication gap, critical log); Redis **`from_url`** socket timeouts when **`SEMANTIC_CACHE_STORE_TIMEOUT_SECONDS`** is set.
+- **`docs/cache-tuning.md`**: request and response body size limits for **`SemanticCacheMiddleware`**; Stage 1 notes that Postgres applies the primary threshold before ``LIMIT``; saturated flight lock registry (LRU behavior when all older locks are held, deduplication gap, critical log); Redis **`from_url`** socket timeouts when **`SEMANTIC_CACHE_STORE_TIMEOUT_SECONDS`** is set; duck-typed ``cache.put`` and ``query_embedding`` detection at middleware startup.
 
 ## [0.2.22] - 2026-05-10
 

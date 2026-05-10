@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import inspect
 import logging
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from typing import TYPE_CHECKING
@@ -64,6 +65,28 @@ if TYPE_CHECKING:
 _logger = logging.getLogger(__name__)
 
 
+def _put_accepts_query_embedding_kwarg(put_method: Callable[..., object]) -> bool:
+    """Return whether ``put`` accepts ``query_embedding`` (named or via ``**kwargs``).
+
+    Args:
+        put_method: Bound or unbound ``put`` callable from a cache implementation.
+
+    Returns:
+        True when the signature includes ``query_embedding`` or a variadic keyword
+        collector (``**kwargs``). False when the signature cannot be inspected.
+    """
+    try:
+        sig = inspect.signature(put_method)
+    except (TypeError, ValueError):
+        return False
+    for param in sig.parameters.values():
+        if param.name == "query_embedding":
+            return True
+        if param.kind == inspect.Parameter.VAR_KEYWORD:
+            return True
+    return False
+
+
 class SemanticCacheMiddleware:
     """Intercept requests, serve semantic cache hits, and populate the cache on miss.
 
@@ -93,6 +116,7 @@ class SemanticCacheMiddleware:
     _require_cache_scope: bool
     _coordination: MiddlewareCoordination
     _cache_authorized_requests: bool
+    _cache_put_accepts_query_embedding: bool
     _max_request_body_bytes: int | None
     _max_response_body_bytes: int | None
     app: ASGIApp
@@ -122,6 +146,11 @@ class SemanticCacheMiddleware:
         Args:
             app: Inner ASGI application.
             cache: Configured ``SemanticCache`` instance (shared across requests).
+                Duck-typed caches are supported; ``put`` should accept
+                ``query_embedding`` as an optional keyword when miss lookups produce
+                an embedding to reuse (see ``SemanticCache.put``). At initialization the
+                middleware inspects ``cache.put`` and omits that argument when the
+                signature does not accept it.
             enabled: When False, requests pass through unchanged.
             path_prefix: If set, only paths starting with this prefix are processed.
             methods: Uppercase HTTP methods to intercept; default is ``("POST",)``.
@@ -163,6 +192,10 @@ class SemanticCacheMiddleware:
 
         self.app = app
         self._cache = cache
+        put_method = getattr(cache, "put", None)
+        self._cache_put_accepts_query_embedding = isinstance(
+            cache, SemanticCache
+        ) or (callable(put_method) and _put_accepts_query_embedding_kwarg(put_method))
         self._enabled = enabled
         self._path_prefix = path_prefix
         self._methods = frozenset(m.upper() for m in (methods or ("POST",)))
@@ -504,7 +537,7 @@ class SemanticCacheMiddleware:
         storage_scope_key: str,
         query_embedding: list[float] | None,
     ) -> None:
-        """Store a cache record and fall back for legacy cache implementations.
+        """Store a cache record, passing ``query_embedding`` when supported.
 
         Args:
             query: Lookup query string.
@@ -512,12 +545,8 @@ class SemanticCacheMiddleware:
             model: Optional model discriminator.
             storage_scope_key: Resolved scope key for storage.
             query_embedding: Optional precomputed embedding from a miss lookup.
-
-        Raises:
-            TypeError: Re-raised when a ``TypeError`` is unrelated to unsupported
-                ``query_embedding`` argument handling.
         """
-        try:
+        if self._cache_put_accepts_query_embedding:
             await self._cache.put(
                 query,
                 record,
@@ -525,15 +554,13 @@ class SemanticCacheMiddleware:
                 storage_scope_key=storage_scope_key,
                 query_embedding=query_embedding,
             )
-        except TypeError as exc:
-            if "query_embedding" not in str(exc):
-                raise
-            await self._cache.put(
-                query,
-                record,
-                model=model,
-                storage_scope_key=storage_scope_key,
-            )
+            return
+        await self._cache.put(
+            query,
+            record,
+            model=model,
+            storage_scope_key=storage_scope_key,
+        )
 
     async def _evict_unreplayable_cache_row(
         self,
