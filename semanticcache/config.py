@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import warnings
 from typing import ClassVar, Literal
 
 from pydantic import AliasChoices, Field, model_validator
@@ -41,7 +42,9 @@ class CacheSettings(BaseSettings):
         description=(
             "Optional second-stage similarity threshold used to reject borderline "
             "matches after initially fetching top_k_candidates. Must be >= "
-            "threshold when set, or validation fails. When unset, threshold alone "
+            "threshold when set, or validation fails. If set equal to threshold, "
+            "validation emits a warning because the second stage cannot filter "
+            "candidates that passed the primary gate. When unset, threshold alone "
             "controls cache hits."
         ),
         ge=0.0,
@@ -249,6 +252,10 @@ class CacheSettings(BaseSettings):
     def _validate_rejection_threshold_vs_primary(self) -> CacheSettings:
         """Ensure the rejection gate can filter stage-1 candidates when enabled.
 
+        Emits ``UserWarning`` when ``rejection_threshold`` equals ``threshold``,
+        because the second stage cannot reject candidates that already satisfied the
+        primary gate at that similarity.
+
         Returns:
             Unchanged settings when validation passes.
 
@@ -267,6 +274,18 @@ class CacheSettings(BaseSettings):
                 "the primary similarity gate."
             )
             raise ValueError(msg)
+        if self.rejection_threshold == self.threshold:
+            warnings.warn(
+                (
+                    "rejection_threshold equals threshold; the second similarity "
+                    "stage cannot reject any candidate that passed the primary gate. "
+                    "Set rejection_threshold strictly above threshold for a "
+                    "meaningful second stage, or unset rejection_threshold to use a "
+                    "single threshold."
+                ),
+                UserWarning,
+                stacklevel=1,
+            )
         return self
 
 
