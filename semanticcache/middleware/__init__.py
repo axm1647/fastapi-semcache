@@ -1,6 +1,7 @@
 """HTTP middleware for semantic caching."""
 
 from .adapters.fastapi import (
+    DEFAULT_MAX_BODY_BYTES,
     ResponseShapeValidator,
     ResponseValidationContext,
     SemanticCacheMiddleware,
@@ -8,6 +9,7 @@ from .adapters.fastapi import (
 )
 
 __all__: list[str] = [
+    "DEFAULT_MAX_BODY_BYTES",
     "ResponseShapeValidator",
     "ResponseValidationContext",
     "SemanticCacheMiddleware",

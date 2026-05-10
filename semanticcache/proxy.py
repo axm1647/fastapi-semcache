@@ -144,7 +144,8 @@ def create_semantic_cache_proxy_app(
             (for example ``transport`` for tests or custom TLS settings).
         **middleware_kwargs: Forwarded to ``SemanticCacheMiddleware`` (``enabled``,
             ``path_prefix``, ``methods``, ``extract_query``, ``extract_model``,
-            ``model_header_name``, ``validate_response``, ``cache_settings``).
+            ``model_header_name``, ``validate_response``, ``cache_settings``,
+            ``max_request_body_bytes``, ``max_response_body_bytes``).
             Optional 429 circuit breaker fields live on ``CacheSettings``
             (``SEMANTIC_CACHE_*`` env vars); see ``config.CacheSettings``.
 

@@ -41,6 +41,10 @@ For privacy and HTTP cache-safety alignment, middleware also skips cache writes 
 
 Middleware also bypasses cache reads and writes for requests that include an `Authorization` header unless you explicitly opt in with `SEMANTIC_CACHE_CACHE_AUTHORIZED_REQUESTS=true` (`CacheSettings.cache_authorized_requests`). This default reduces accidental reuse of per-user responses across authenticated callers.
 
+### Request and response body size limits
+
+`SemanticCacheMiddleware` buffers the full request body and the full downstream response. To cap memory use and reduce abuse from huge payloads, use **`max_request_body_bytes`** and **`max_response_body_bytes`**. Each defaults to **`DEFAULT_MAX_BODY_BYTES`** (10 MiB). When a client request exceeds the request cap, the middleware answers with **HTTP 413** before the route runs. When the upstream response would exceed the response cap, the client receives **HTTP 502** (the handler may still have run; the middleware does not forward an oversized body). Set either argument to **`None`** to disable that limit (not recommended in untrusted or high-concurrency production setups). The same options are accepted by **`create_semantic_cache_proxy_app`** via keyword arguments.
+
 ### Response shape validation
 
 Middleware stores successful responses only when the body parses as a JSON object.

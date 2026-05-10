@@ -3,6 +3,7 @@
 from .cache import SemanticCache, resolve_cache_scope
 from .config import get_cache_settings
 from .middleware import (
+    DEFAULT_MAX_BODY_BYTES,
     ResponseShapeValidator,
     ResponseValidationContext,
     SemanticCacheMiddleware,
@@ -14,6 +15,7 @@ __all__: list[str] = [
     "CacheEntry",
     "CacheQuery",
     "CacheResult",
+    "DEFAULT_MAX_BODY_BYTES",
     "ResponseShapeValidator",
     "ResponseValidationContext",
     "resolve_cache_scope",

@@ -11,13 +11,19 @@ import logging
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from typing import TYPE_CHECKING
 
+from starlette.exceptions import HTTPException
 from starlette.requests import Request
-from starlette.responses import Response
+from starlette.responses import PlainTextResponse, Response
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from ....cache import SemanticCache
 from ....types import CacheResult
-from .asgi_io import call_downstream, read_body, send_response
+from .asgi_io import (
+    DEFAULT_MAX_BODY_BYTES,
+    call_downstream,
+    read_body,
+    send_response,
+)
 from .cache_ops import (
     cache_get_fail_open,
     response_allows_cache_store,
@@ -87,6 +93,8 @@ class SemanticCacheMiddleware:
     _require_cache_scope: bool
     _coordination: MiddlewareCoordination
     _cache_authorized_requests: bool
+    _max_request_body_bytes: int | None
+    _max_response_body_bytes: int | None
     app: ASGIApp
 
     def __init__(
@@ -106,6 +114,8 @@ class SemanticCacheMiddleware:
         scope_header_name: str = "X-Semantic-Cache-Scope",
         validate_response: ResponseShapeValidator | None = None,
         cache_settings: CacheSettings | None = None,
+        max_request_body_bytes: int | None = DEFAULT_MAX_BODY_BYTES,
+        max_response_body_bytes: int | None = DEFAULT_MAX_BODY_BYTES,
     ) -> None:
         """Attach semantic caching to a Starlette / FastAPI application.
 
@@ -141,6 +151,13 @@ class SemanticCacheMiddleware:
                 they stay aligned with ``SemanticCache``; otherwise ``cache_settings``
                 applies. This source also controls whether requests that include an
                 ``Authorization`` header are cacheable.
+            max_request_body_bytes: Maximum size of the buffered request body (default
+                ``DEFAULT_MAX_BODY_BYTES``, 10 MiB). When exceeded, the client receives
+                HTTP 413. Set to ``None`` to disable the limit (not recommended in
+                production).
+            max_response_body_bytes: Maximum size of the buffered downstream response
+                body (default ``DEFAULT_MAX_BODY_BYTES``, 10 MiB). When exceeded, the
+                client receives HTTP 502. Set to ``None`` to disable the limit.
         """
         from ....config import get_cache_settings
 
@@ -173,6 +190,8 @@ class SemanticCacheMiddleware:
             circuit_breaker_open_seconds=resolved.circuit_breaker_429_open_seconds,
         )
         self._cache_authorized_requests = resolved.cache_authorized_requests
+        self._max_request_body_bytes = max_request_body_bytes
+        self._max_response_body_bytes = max_response_body_bytes
 
     async def _default_extract_model(self, request: Request, body: bytes) -> str | None:
         """Read model from header or JSON body.
@@ -441,7 +460,9 @@ class SemanticCacheMiddleware:
         Returns:
             Full request body bytes.
         """
-        return await read_body(receive)
+        return await read_body(
+            receive, max_body_bytes=self._max_request_body_bytes
+        )
 
     async def _call_downstream(self, scope: Scope, body: bytes) -> Response:
         """Invoke downstream ASGI app and buffer its response.
@@ -453,7 +474,12 @@ class SemanticCacheMiddleware:
         Returns:
             Buffered Starlette ``Response`` built from downstream ASGI messages.
         """
-        return await call_downstream(self.app, scope, body)
+        return await call_downstream(
+            self.app,
+            scope,
+            body,
+            max_body_bytes=self._max_response_body_bytes,
+        )
 
     async def _send_response(
         self,
@@ -600,7 +626,21 @@ class SemanticCacheMiddleware:
         ):
             await self.app(scope, receive, send)
             return
-        body = await self._read_body(receive)
+        try:
+            body = await self._read_body(receive)
+        except HTTPException as exc:
+            detail = exc.detail
+            text = (
+                detail
+                if isinstance(detail, str)
+                else "Request body exceeds configured maximum size."
+            )
+            await self._send_response(
+                PlainTextResponse(text, status_code=exc.status_code),
+                scope,
+                send,
+            )
+            return
         body_replayed = False
 
         async def _request_receive() -> Message:
