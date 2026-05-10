@@ -11,9 +11,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **`SemanticCacheMiddleware`**: **`max_request_body_bytes`** and **`max_response_body_bytes`** (default **10 MiB** each, shared constant **`DEFAULT_MAX_BODY_BYTES`**) limit buffered request and upstream response size; **HTTP 413** and **HTTP 502** when exceeded.
 
+### Fixed
+
+- **`AsyncPgVectorStore.similarity_search_top_k`**: apply the similarity threshold in SQL before ``LIMIT`` so top-k retrieval considers only rows at or above the threshold (not the first k neighbors by distance).
+
 ### Documentation
 
-- **`docs/cache-tuning.md`**: request and response body size limits for **`SemanticCacheMiddleware`**.
+- **`docs/cache-tuning.md`**: request and response body size limits for **`SemanticCacheMiddleware`**; Stage 1 notes that Postgres applies the primary threshold before ``LIMIT``.
 
 ## [0.2.22] - 2026-05-10
 

@@ -237,23 +237,25 @@ class AsyncPgVectorStore:
         model_key: str = "",
         scope_key: str = "",
     ) -> list[CacheEntry]:
-        """Find up to ``limit`` nearest rows and apply a similarity gate.
+        """Return up to ``limit`` rows at or above ``threshold`` by cosine similarity.
 
-        Uses ``<=>`` (cosine distance). Similarity is ``1 - distance``, comparable
-        to cosine similarity for normalized vectors.
+        Rows are restricted in SQL so ``LIMIT`` applies only after the similarity
+        gate. Uses ``<=>`` (cosine distance); similarity is ``1 - distance``,
+        comparable to cosine similarity for normalized vectors.
 
         Args:
             query_embedding: Query vector of length ``embedding_dim``.
             threshold: Minimum similarity in ``[0.0, 1.0]`` for a hit.
-            limit: Maximum number of candidates to return (top-k).
+            limit: Maximum number of rows to return among those at or above
+                ``threshold``.
             model_key: Only consider rows with this ``model_key`` (empty string is
                 the default bucket).
             scope_key: Only consider rows with this ``scope_key`` (empty string is
                 the legacy global bucket).
 
         Returns:
-            List of ``CacheEntry`` objects ordered from highest to lowest similarity,
-            filtered to those at or above ``threshold``. The list is empty on miss.
+            List of ``CacheEntry`` objects ordered from highest to lowest similarity.
+            The list is empty on miss.
 
         Raises:
             ValueError: If ``query_embedding`` length does not match ``embedding_dim``.
@@ -270,19 +272,21 @@ class AsyncPgVectorStore:
             WHERE query_embedding IS NOT NULL
               AND model_key = %s
               AND scope_key = %s
+              AND (1 - (query_embedding <=> %s::vector)) >= %s
             ORDER BY query_embedding <=> %s::vector
             LIMIT %s
             """).format(tbl=tbl)
         async with self._pool.connection() as conn:
             async with conn.cursor() as cur:
-                _ = await cur.execute(stmt, (vec, model_key, scope_key, vec, limit))
+                _ = await cur.execute(
+                    stmt,
+                    (vec, model_key, scope_key, vec, threshold, vec, limit),
+                )
                 rows = await cur.fetchall()
                 entries: list[CacheEntry] = []
                 for row in rows:
                     rid, qtext, resp, similarity = row
                     sim = float(similarity)
-                    if sim < threshold:
-                        continue
                     if not isinstance(resp, dict):
                         msg = "cache response column must deserialize to a JSON object"
                         raise TypeError(msg)
@@ -304,7 +308,7 @@ class AsyncPgVectorStore:
         model_key: str = "",
         scope_key: str = "",
     ) -> CacheEntry | None:
-        """Find the nearest row by cosine distance and apply a similarity gate.
+        """Find the nearest row among those meeting the similarity threshold.
 
         This compatibility wrapper delegates to ``similarity_search_top_k`` with
         ``limit=1``.
@@ -316,8 +320,8 @@ class AsyncPgVectorStore:
             scope_key: Only consider rows with this ``scope_key``.
 
         Returns:
-            ``CacheEntry`` for the single nearest neighbor if similarity is at or
-            above ``threshold``; otherwise ``None``.
+            ``CacheEntry`` for the nearest qualifying neighbor by cosine distance;
+            ``None`` when no row meets ``threshold``.
 
         Raises:
             ValueError: If ``query_embedding`` length does not match ``embedding_dim``.

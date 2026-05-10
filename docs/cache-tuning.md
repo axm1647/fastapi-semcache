@@ -105,7 +105,8 @@ The first stage embeds the query and runs a pgvector similarity search:
 
 - **`SEMANTIC_CACHE_THRESHOLD`** (`CacheSettings.threshold`):
   - Primary similarity gate in \[0.0, 1.0].
-  - Candidates below this value are discarded by the vector store.
+  - Candidates below this value are discarded in Postgres before ``LIMIT`` so the
+    top-k cap applies only among rows that meet the threshold.
 - **`SEMANTIC_CACHE_TOP_K_CANDIDATES`** (`CacheSettings.top_k_candidates`):
   - Maximum number of nearest neighbors returned from pgvector after applying the primary threshold.
   - Defaults to `1` for single-hit behavior.
