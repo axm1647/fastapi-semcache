@@ -31,6 +31,8 @@ class RedisResponseStore:
     _key_prefix: str
     _default_ttl_seconds: int | None
     _redis_uri: str
+    _socket_timeout_seconds: float | None
+    _socket_connect_timeout_seconds: float | None
     _client: redis_async.Redis | None
 
     def __init__(
@@ -39,6 +41,8 @@ class RedisResponseStore:
         *,
         key_prefix: str = "semanticcache:resp:",
         default_ttl_seconds: int | None = None,
+        socket_timeout_seconds: float | None = None,
+        socket_connect_timeout_seconds: float | None = None,
     ) -> None:
         """Attach to Redis using a shared-async client.
 
@@ -47,20 +51,30 @@ class RedisResponseStore:
             key_prefix: Prepended to every logical ``key`` from ``get``/``put``.
             default_ttl_seconds: Used when ``put`` is called without ``ttl_seconds``.
                 If both are omitted, keys persist until explicitly overwritten.
+            socket_timeout_seconds: Redis ``socket_timeout`` in seconds for read/write
+                operations; omit for ``redis.asyncio`` defaults.
+            socket_connect_timeout_seconds: Redis ``socket_connect_timeout`` in seconds
+                for the TCP connect phase; omit for ``redis.asyncio`` defaults.
         """
         self._key_prefix = key_prefix
         self._default_ttl_seconds = default_ttl_seconds
         self._redis_uri = redis_uri
+        self._socket_timeout_seconds = socket_timeout_seconds
+        self._socket_connect_timeout_seconds = socket_connect_timeout_seconds
         self._client = None
 
     def _client_or_create(self) -> redis_async.Redis:
         redis_asyncio = _require_redis()
 
         if self._client is None:
-            self._client = redis_asyncio.from_url(
-                self._redis_uri,
-                decode_responses=True,
-            )
+            kwargs: dict[str, object] = {"decode_responses": True}
+            if self._socket_timeout_seconds is not None:
+                kwargs["socket_timeout"] = self._socket_timeout_seconds
+            if self._socket_connect_timeout_seconds is not None:
+                kwargs["socket_connect_timeout"] = (
+                    self._socket_connect_timeout_seconds
+                )
+            self._client = redis_asyncio.from_url(self._redis_uri, **kwargs)
         return self._client
 
     def _full_key(self, key: str) -> str:

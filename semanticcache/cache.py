@@ -199,6 +199,8 @@ class SemanticCache:
             RedisResponseStore(
                 resolved_redis.strip(),
                 default_ttl_seconds=self._settings.redis_ttl_seconds,
+                socket_timeout_seconds=self._settings.store_timeout_seconds,
+                socket_connect_timeout_seconds=self._settings.store_timeout_seconds,
             )
             if resolved_redis.strip()
             else None

@@ -77,7 +77,9 @@ class CacheSettings(BaseSettings):
         gt=0.0,
         description=(
             "Timeout budget for Postgres/Redis operations in seconds. "
-            "Set to null/empty to disable."
+            "When set, also configures Redis socket_timeout and "
+            "socket_connect_timeout for the response store client. "
+            "Set to null/empty to disable asyncio timeouts and Redis socket timeouts."
         ),
     )
 

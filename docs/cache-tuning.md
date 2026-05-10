@@ -163,7 +163,11 @@ tie up worker capacity. `SemanticCache` supports fail-fast timeout controls:
 - **`SEMANTIC_CACHE_STORE_TIMEOUT_SECONDS`**
   (`CacheSettings.store_timeout_seconds`):
   timeout budget for Postgres and Redis operations, including initial pool open
-  and schema checks.
+  and schema checks. When this value is set (non-null), the Redis response store
+  also passes it as ``socket_timeout`` and ``socket_connect_timeout`` to
+  ``redis.asyncio.from_url`` so stalled TCP or Redis reads cannot block the
+  event loop beyond that budget at the socket layer. If you disable the store
+  timeout (null/empty env), Redis uses library defaults for those socket options.
 
 When these timeouts are exceeded, the cache raises a timeout exception with
 operation metadata, emits a warning log entry, and increments an in-process
