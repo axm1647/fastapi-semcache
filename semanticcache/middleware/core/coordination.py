@@ -69,7 +69,10 @@ class MiddlewareCoordination:
             scope_storage: Resolved storage scope string.
 
         Returns:
-            Async lock for this `(query, model, scope)` tuple.
+            Async lock for this `(query, model, scope)` tuple. When the
+            registry is at capacity and every retained lock is held, returns a
+            lock that is not registered; concurrent requests for the same key
+            may then miss deduplication until capacity frees up.
         """
         key = (query, model, scope_storage)
         async with self._flight_lock_registry:
@@ -80,6 +83,14 @@ class MiddlewareCoordination:
             lock = asyncio.Lock()
             self._flight_locks[key] = lock
             self._evict_unused_flight_locks()
+            if key not in self._flight_locks:
+                _logger.critical(
+                    "Flight lock registry is full (%d distinct keys); this key was "
+                    "evicted immediately because every retained lock was held. "
+                    "Serving without registry coordination; concurrent identical keys "
+                    "may duplicate upstream work until capacity frees.",
+                    self._flight_lock_max_entries,
+                )
             return lock
 
     async def upstream_blocked_by_circuit(self) -> bool:

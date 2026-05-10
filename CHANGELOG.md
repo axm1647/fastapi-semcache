@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **`SemanticCacheMiddleware`**: **`max_request_body_bytes`** and **`max_response_body_bytes`** (default **10 MiB** each, shared constant **`DEFAULT_MAX_BODY_BYTES`**) limit buffered request and upstream response size; **HTTP 413** and **HTTP 502** when exceeded.
+- **Flight lock registry**: when every older retained in-flight lock is still held and a new distinct key is inserted, LRU eviction drops that key’s table entry immediately; **`MiddlewareCoordination`** emits a **critical** log so saturation and possible duplicate upstream work are visible.
 
 ### Fixed
 
@@ -17,7 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Documentation
 
-- **`docs/cache-tuning.md`**: request and response body size limits for **`SemanticCacheMiddleware`**; Stage 1 notes that Postgres applies the primary threshold before ``LIMIT``.
+- **`docs/cache-tuning.md`**: request and response body size limits for **`SemanticCacheMiddleware`**; Stage 1 notes that Postgres applies the primary threshold before ``LIMIT``; saturated flight lock registry (LRU behavior when all older locks are held, deduplication gap, critical log).
 
 ## [0.2.22] - 2026-05-10
 

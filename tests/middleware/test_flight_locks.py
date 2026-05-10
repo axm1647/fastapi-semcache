@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 from typing import cast
+from unittest.mock import patch
 
 import pytest
 from fastapi import FastAPI
@@ -84,3 +85,23 @@ async def test_get_flight_lock_skips_eviction_for_locked_entries() -> None:
     assert ("q1", "m", "") in middleware._coordination._flight_locks
     assert ("q2", "m", "") not in middleware._coordination._flight_locks
     assert ("q3", "m", "") in middleware._coordination._flight_locks
+
+
+@pytest.mark.asyncio
+async def test_get_flight_lock_hard_cap_uncoordinated_when_registry_full() -> None:
+    """New keys use an ephemeral lock when every registry slot is held."""
+    middleware = _make_middleware(max_entries=1)
+
+    held = await middleware._coordination.get_flight_lock("q1", "m", "")
+    await held.acquire()
+    try:
+        with patch("semanticcache.middleware.core.coordination._logger.critical") as (
+            mock_critical
+        ):
+            ephemeral = await middleware._coordination.get_flight_lock("q2", "m", "")
+        assert len(middleware._coordination._flight_locks) == 1
+        assert ephemeral is not held
+        assert ("q2", "m", "") not in middleware._coordination._flight_locks
+        mock_critical.assert_called_once()
+    finally:
+        held.release()

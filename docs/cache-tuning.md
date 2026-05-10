@@ -183,6 +183,10 @@ long-lived processes with high key cardinality, configure:
   exceeded, the middleware evicts least-recently-used **unlocked** lock entries.
   Locks currently coordinating active requests are never evicted.
 
-Default is `4096`. If all tracked locks are currently held, temporary growth
-above the cap is possible until one becomes idle.
+Default is `4096`. **Saturated registry:** when every older retained lock is
+still held and a new distinct key is inserted, LRU eviction drops that new key’s
+table entry immediately (the new lock is the first unlocked slot in traversal
+order). The caller still holds the same lock object, but it is no longer tracked,
+so concurrent identical keys are not deduplicated until capacity frees. A
+critical-level log is emitted when this happens.
 
