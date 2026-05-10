@@ -54,7 +54,7 @@ def response_allows_cache_store(response: Response) -> bool:
     Returns:
         False when Cache-Control has no-store or private, or Set-Cookie is present.
     """
-    if response.headers.get("set-cookie") is not None:
+    if any(name.lower() == b"set-cookie" for name, _ in response.raw_headers):
         return False
     cache_control = response.headers.get("cache-control")
     if cache_control is None:

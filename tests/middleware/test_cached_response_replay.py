@@ -15,6 +15,7 @@ from semanticcache.middleware.adapters.fastapi import (
     ResponseValidationContext,
     SemanticCacheMiddleware,
 )
+from semanticcache.middleware.adapters.fastapi.cache_ops import response_allows_cache_store
 from semanticcache.types import CacheResult
 
 
@@ -302,6 +303,29 @@ def test_cache_store_skipped_when_set_cookie_present() -> None:
     assert second.status_code == 200
     assert second.headers.get("X-Cache") == "MISS"
     assert calls["count"] == 2
+
+
+def test_cache_store_skipped_when_raw_set_cookie_present() -> None:
+    """Skip cache writes when raw headers include Set-Cookie."""
+
+    class _Headers:
+        """Expose a mapping API that omits Set-Cookie."""
+
+        def get(self, name: str, default: str | None = None) -> str | None:
+            """Return default for all headers."""
+            _ = name
+            return default
+
+    class _Response:
+        """Expose raw Set-Cookie headers with a sparse header mapping."""
+
+        headers = _Headers()
+        raw_headers = [
+            (b"content-type", b"application/json"),
+            (b"set-cookie", b"session=abc123; HttpOnly; Path=/"),
+        ]
+
+    assert not response_allows_cache_store(cast(JSONResponse, _Response()))
 
 
 def test_cache_store_skipped_when_response_validator_rejects_shape() -> None:
