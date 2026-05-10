@@ -11,10 +11,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **`VoyageEmbedder`** (`semanticcache.embedders`): embeddings via `aiohttp` against `https://api.voyageai.com/v1/embeddings`; local input validation with `voyageai.Client.tokenize`. Install with **`fastapi-semcache[embed-voyage]`** (`voyageai`, `aiohttp`).
 - **`get_embedder`** support when **`SEMANTIC_CACHE_EMBEDDER_TYPE=voyage`**, with **`CacheSettings`** fields **`voyage_embedding_model`**, **`voyage_embedding_dimensions`**, and **`voyage_input_type`** (defaults **`voyage-3`** / **`1024`** when unset).
+- **`CacheResult.cache_entry_id`**: set on vector hits from **`SemanticCache.get`** for the matching Postgres row.
+- **`SemanticCache.delete_entry_by_id`**: deletes that row (scoped by model and scope buckets) and the matching Redis response key when Redis is enabled.
+- **`AsyncPgVectorStore.delete_by_id`** and **`RedisResponseStore.delete`** for targeted eviction.
+
+### Fixed
+
+- **`SemanticCacheMiddleware`**: similarity hits whose stored payload cannot be replayed (for example marked cache records with a non-object **`body`**) no longer fail silently. The middleware logs a warning and, when **`SemanticCache`** supplies **`cache_entry_id`**, removes the bad Postgres row and Redis key so the same corrupt entry does not win retrieval on every request.
 
 ### Documentation
 
 - **`docs/embedders.md`**: Voyage embedder section (constructor, env vars, example).
+- **`docs/cache-tuning.md`**: unreplayable similarity hits (logging and eviction behavior).
 
 ## [0.2.21] - 2026-05-09
 
