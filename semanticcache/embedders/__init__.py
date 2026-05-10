@@ -33,14 +33,18 @@ def get_embedder(settings: CacheSettings | None = None) -> BaseEmbedder:
     if resolved.embedder_type == "voyage":
         return VoyageEmbedder(
             model_name=resolved.voyage_embedding_model or VOYAGE_DEFAULT_MODEL,
-            dimensions=resolved.voyage_embedding_dimensions or VOYAGE_DEFAULT_DIMENSIONS,
+            dimensions=resolved.voyage_embedding_dimensions
+            or VOYAGE_DEFAULT_DIMENSIONS,
             input_type=resolved.voyage_input_type,
             api_key=resolved.voyage_api_key,
         )
     if resolved.embedder_type == "ollama":
-        model = resolved.ollama_embedding_model
-        dims = resolved.ollama_embedding_dimensions
-        assert model is not None and dims is not None
+        model: str | None = resolved.ollama_embedding_model
+        dims: int | None = resolved.ollama_embedding_dimensions
+        if model is None or dims is None:
+            raise ValueError(
+                "ollama_embedding_model and ollama_embedding_dimensions are required"
+            )
         return OllamaEmbedder(
             model_name=model,
             dimensions=dims,
