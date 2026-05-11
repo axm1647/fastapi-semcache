@@ -615,6 +615,68 @@ class SemanticCacheMiddleware:
             storage_scope_key=storage_scope_key,
         )
 
+    def _shape_validator(
+        self,
+    ) -> "Callable[[Request, bytes, Response, dict[str, object], str | None, str | None], Awaitable[bool]]":
+        """Return an async callable that validates response shape for cache storage.
+
+        Wraps ``_response_shape_allows_cache_store`` so both the buffered and tee
+        paths share a single construction point for ``ResponseValidationContext``.
+        If ``ResponseValidationContext`` gains new fields in the future, only this
+        method needs updating.
+
+        Returns:
+            Async function with the signature expected by ``maybe_store_cache_entry``
+            and ``stream_tee_and_store``.
+        """
+
+        async def _validate(
+            req: Request,
+            req_body: bytes,
+            resp: Response,
+            pld: dict[str, object],
+            mdl: str | None,
+            scp: str | None,
+        ) -> bool:
+            return await self._response_shape_allows_cache_store(
+                ResponseValidationContext(
+                    request=req,
+                    request_body=req_body,
+                    response=resp,
+                    payload=pld,
+                    model=mdl,
+                    scope=scp,
+                )
+            )
+
+        return _validate
+
+    def _record_builder(
+        self,
+    ) -> "Callable[[dict[str, object], Response], dict[str, object]]":
+        """Return a callable that builds a cache record from a payload and response.
+
+        Returns:
+            Function with the signature expected by ``maybe_store_cache_entry``
+            and ``stream_tee_and_store``.
+        """
+        return lambda pld, resp: self._cache_record_from_response(
+            payload=pld, response=resp
+        )
+
+    def _put_callback(
+        self,
+    ) -> "Callable[[str, dict[str, object], str | None, str, list[float] | None], Awaitable[None]]":
+        """Return an async callable that persists a cache record.
+
+        Returns:
+            Function with the signature expected by ``maybe_store_cache_entry``
+            and ``stream_tee_and_store``.
+        """
+        return lambda q, record, mdl, storage, embedding: self._cache_put_with_optional_embedding(
+            q, record, mdl, storage, embedding
+        )
+
     async def _evict_unreplayable_cache_row(
         self,
         result: CacheResult,
@@ -845,27 +907,9 @@ class SemanticCacheMiddleware:
                     max_body_bytes=self._max_response_body_bytes,
                     miss_headers=miss,
                     response_allows_cache_store=self._response_allows_cache_store,
-                    response_shape_allows_cache_store=lambda req, req_body, resp, pld, mdl, scp: self._response_shape_allows_cache_store(
-                        ResponseValidationContext(
-                            request=req,
-                            request_body=req_body,
-                            response=resp,
-                            payload=pld,
-                            model=mdl,
-                            scope=scp,
-                        )
-                    ),
-                    cache_record_from_response=lambda pld, resp: self._cache_record_from_response(
-                        payload=pld,
-                        response=resp,
-                    ),
-                    cache_put=lambda q, record, mdl, storage, embedding: self._cache_put_with_optional_embedding(
-                        q,
-                        record,
-                        mdl,
-                        storage,
-                        embedding,
-                    ),
+                    response_shape_allows_cache_store=self._shape_validator(),
+                    cache_record_from_response=self._record_builder(),
+                    cache_put=self._put_callback(),
                 )
                 await self._coordination.record_upstream_status_for_circuit(
                     upstream_status
@@ -893,27 +937,9 @@ class SemanticCacheMiddleware:
                 scope_storage=scope_storage,
                 query_embedding=result.query_embedding,
                 response_allows_cache_store=self._response_allows_cache_store,
-                response_shape_allows_cache_store=lambda req, req_body, resp, pld, mdl, scp: self._response_shape_allows_cache_store(
-                    ResponseValidationContext(
-                        request=req,
-                        request_body=req_body,
-                        response=resp,
-                        payload=pld,
-                        model=mdl,
-                        scope=scp,
-                    )
-                ),
-                cache_record_from_response=lambda pld, resp: self._cache_record_from_response(
-                    payload=pld,
-                    response=resp,
-                ),
-                cache_put=lambda q, record, mdl, storage, embedding: self._cache_put_with_optional_embedding(
-                    q,
-                    record,
-                    mdl,
-                    storage,
-                    embedding,
-                ),
+                response_shape_allows_cache_store=self._shape_validator(),
+                cache_record_from_response=self._record_builder(),
+                cache_put=self._put_callback(),
             )
 
             await self._send_response(final, scope, send)
