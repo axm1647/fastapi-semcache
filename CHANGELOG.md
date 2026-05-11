@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`CacheSettings.response_mode`**: **`buffered`** (default) or **`tee`**. Tee mode forwards downstream ASGI body chunks on cache misses while buffering for a post-response cache write (via **`SEMANTIC_CACHE_RESPONSE_MODE`** or **`SemanticCache.settings`** when the middleware uses cache settings for scope).
 - **`SemanticCacheMiddleware`**: **`max_request_body_bytes`** and **`max_response_body_bytes`** (default **10 MiB** each, shared constant **`DEFAULT_MAX_BODY_BYTES`**) limit buffered request and upstream response size; **HTTP 413** and **HTTP 502** when exceeded.
 - **Flight lock registry**: when every older retained in-flight lock is still held and a new distinct key is inserted, LRU eviction drops that key’s table entry immediately; **`MiddlewareCoordination`** emits a **critical** log so saturation and possible duplicate upstream work are visible.
 - **Compatibility import**: **`fastapi_semcache`** imports no longer raise **`ImportError`** and instead re-imports from **`semanticcache/__init__.py`**

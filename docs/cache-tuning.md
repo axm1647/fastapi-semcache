@@ -52,6 +52,8 @@ This is especially important for reverse-proxy deployments because upstream APIs
 
 `SemanticCacheMiddleware` buffers the full request body and the full downstream response. To cap memory use and reduce abuse from huge payloads, use **`max_request_body_bytes`** and **`max_response_body_bytes`**. Each defaults to **`DEFAULT_MAX_BODY_BYTES`** (10 MiB). When a client request exceeds the request cap, the middleware answers with **HTTP 413** before the route runs. When the upstream response would exceed the response cap, the client receives **HTTP 502** (the handler may still have run; the middleware does not forward an oversized body). Set either argument to **`None`** to disable that limit (not recommended in untrusted or high-concurrency production setups). The same options are accepted by **`create_semantic_cache_proxy_app`** via keyword arguments.
 
+**Response delivery on miss:** `SEMANTIC_CACHE_RESPONSE_MODE` (`CacheSettings.response_mode`) is **`buffered`** by default (full body buffered before the client sees the response). Set to **`tee`** to stream chunks to the client on cache misses while still accumulating the body for a post-stream cache write (when within size limits and validation passes). When the middleware uses **`SemanticCache.settings`** for the scope gate, **`response_mode`** is read from that same object; otherwise it comes from the middleware **`cache_settings`** source (see middleware constructor docs).
+
 ### Response shape validation
 
 Middleware stores successful responses only when the body parses as a JSON object.
