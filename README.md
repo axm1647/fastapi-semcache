@@ -85,6 +85,40 @@ You can combine extras, for example **`pip install "fastapi-semcache[redis,embed
 
 ## FastAPI middleware
 
+> **Security: cache scope and cross-tenant isolation**
+>
+> By default (`SEMANTIC_CACHE_REQUIRE_CACHE_SCOPE=true`), the middleware reads the
+> cache partition key from client-controlled sources: the `X-Semantic-Cache-Scope`
+> header and the `cache_scope` / `tenant_id` JSON body fields. **Any client can
+> forge these values to read another tenant's cached responses or write responses
+> into another tenant's cache partition.**
+>
+> This default is safe only for single-tenant apps (consider setting
+> `SEMANTIC_CACHE_REQUIRE_CACHE_SCOPE=false` to remove the scope requirement
+> entirely) or when a trusted edge/gateway overwrites those fields from verified
+> identity before requests reach your app.
+>
+> **For multi-tenant APIs exposed directly to clients, always supply a server-side
+> `extract_scope`:**
+>
+> ```python
+> from starlette.requests import Request
+> from semanticcache.middleware.core.extractors import trusted_extract_scope_from_server_side
+>
+> async def extract_scope(request: Request, body: bytes) -> str | None:
+>     return await trusted_extract_scope_from_server_side(request)
+>
+> app.add_middleware(SemanticCacheMiddleware, cache=cache, extract_scope=extract_scope)
+> # Starlette executes middleware in reverse addition order:
+> # YourAuthMiddleware runs first and populates request.state,
+> # then SemanticCacheMiddleware reads it.
+> app.add_middleware(YourAuthMiddleware)
+> ```
+>
+> `trusted_extract_scope_from_server_side` reads only `request.state`, which
+> clients cannot forge. See [docs/cache-tuning.md](docs/cache-tuning.md) for
+> details.
+
 Add `SemanticCacheMiddleware` to your app and reuse one `SemanticCache` instance for all requests. Configure Postgres, Redis, and the embedder with **`SEMANTIC_CACHE_*`** environment variables (see `.env.example`). By default only **`POST`** requests are intercepted; the middleware derives cache-key text from JSON bodies using `query`, `prompt`, `input`, or chat-style `messages` (see `default_extract_query` in `semanticcache.middleware`). Successful responses whose body parses as a **JSON object** are candidates for storage, and cache hits replay the original HTTP status and response metadata.
 
 Redis is optional. If **`SEMANTIC_CACHE_REDIS_URI`** is empty (or whitespace), the cache runs in Postgres-only mode: semantic lookup and response storage still work via pgvector, but Redis TTL-based payload caching is disabled. If you **do** set a Redis URI, install **`fastapi-semcache[redis]`** (see [Redis response cache](#redis-response-cache)).
