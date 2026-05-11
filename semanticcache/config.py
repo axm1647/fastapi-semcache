@@ -53,6 +53,7 @@ class CacheSettings(BaseSettings):
     pg_uri: str = Field(
         "postgresql://user:pass@localhost:5432/semanticcache",
         description="PostgreSQL URI with pgvector extension",
+        repr=False,
     )
     redis_uri: str = Field(
         "",
