@@ -489,5 +489,15 @@ async def stream_tee_and_store(
             cache_put=cache_put,
         )
 
-    asyncio.create_task(_store())
+    def _on_store_done(task: asyncio.Task[None]) -> None:
+        exc = task.exception() if not task.cancelled() else None
+        if exc is not None:
+            _logger.exception(
+                "Background tee cache store raised unexpectedly. path=%s",
+                scope.get("path", "?"),
+                exc_info=exc,
+            )
+
+    task = asyncio.create_task(_store())
+    task.add_done_callback(_on_store_done)
     return tee.status_code
