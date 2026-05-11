@@ -217,6 +217,17 @@ class CacheSettings(BaseSettings):
             "header. Default False to avoid accidental cross-user response reuse."
         ),
     )
+    response_mode: Literal["buffered", "tee"] = Field(
+        default="buffered",
+        description=(
+            "Controls how cache-miss responses are delivered. "
+            '"buffered": Full response is buffered before sending to the client; '
+            "cache store runs before the response is returned. "
+            '"tee": Chunks are forwarded as they arrive; cache store runs in a '
+            "background task after the stream completes (lower time-to-first-byte "
+            "for streaming upstreams; body is still accumulated for storage)."
+        ),
+    )
 
     @model_validator(mode="after")
     def _validate_ollama_embedding_settings(self) -> CacheSettings:
