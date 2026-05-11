@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from collections.abc import Awaitable, Callable, Mapping
@@ -10,10 +11,12 @@ from typing import TYPE_CHECKING, cast
 
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
-from starlette.types import Scope, Send
+from starlette.types import ASGIApp, Message, Scope, Send
 
 from ....cache import resolve_cache_scope
 from ....types import CacheResult
+
+from .asgi_io import TeeSend
 
 if TYPE_CHECKING:
     from ....config import CacheSettings
@@ -380,3 +383,111 @@ async def maybe_store_cache_entry(
         _logger.exception(
             "Semantic cache write failed; returning upstream response unchanged."
         )
+
+
+async def stream_tee_and_store(
+    *,
+    app: ASGIApp,
+    scope: Scope,
+    body: bytes,
+    send: Send,
+    lookup_ctx: LookupContext,
+    request: Request,
+    query_embedding: list[float] | None,
+    max_body_bytes: int | None,
+    response_allows_cache_store: Callable[[Response], bool],
+    response_shape_allows_cache_store: Callable[
+        [Request, bytes, Response, dict[str, object], str | None, str | None],
+        Awaitable[bool],
+    ],
+    cache_record_from_response: Callable[
+        [dict[str, object], Response], dict[str, object]
+    ],
+    miss_headers: Mapping[str, str],
+    cache_put: Callable[
+        [str, dict[str, object], str | None, str, list[float] | None], Awaitable[None]
+    ],
+) -> int:
+    """Stream downstream response through a tee, then store in a background task.
+
+    Forwards each ASGI body chunk to ``send`` immediately so the client sees
+    streaming behavior, accumulates bytes in ``TeeSend``, then schedules
+    ``maybe_store_cache_entry`` after the stream finishes. If the tee buffer
+    exceeds ``max_body_bytes``, the client still receives the full stream but
+    cache storage is skipped.
+
+    Args:
+        app: Downstream ASGI application.
+        scope: Current request ASGI scope.
+        body: Buffered request body replayed to the downstream app.
+        send: ASGI send callable for the client connection.
+        lookup_ctx: Extracted lookup text, model, and scope for cache writes.
+        request: Current Starlette request.
+        query_embedding: Optional embedding from the miss path for ``cache_put``.
+        max_body_bytes: Maximum bytes to retain for cache assembly; None disables
+            the cap.
+        miss_headers: Headers merged into ``http.response.start`` (for example
+            ``X-Cache: MISS``).
+        response_allows_cache_store: Header and policy gate for storing responses.
+        response_shape_allows_cache_store: Async validator for parsed JSON payload.
+        cache_record_from_response: Maps payload and response to a cache record.
+        cache_put: Persists the cache record.
+
+    Returns:
+        HTTP status code observed on the downstream ``http.response.start``.
+    """
+    body_sent = False
+
+    async def replay_receive() -> Message:
+        nonlocal body_sent
+        if body_sent:
+            return {"type": "http.request", "body": b"", "more_body": False}
+        body_sent = True
+        return {"type": "http.request", "body": body, "more_body": False}
+
+    tee = TeeSend(
+        real_send=send,
+        max_body_bytes=max_body_bytes,
+        merge_into_start=miss_headers,
+    )
+    await app(scope, replay_receive, tee)
+
+    if tee.over_limit:
+        _logger.warning(
+            "Tee buffer exceeded max_body_bytes; skipping cache store. path=%s",
+            scope.get("path", "?"),
+        )
+        return tee.status_code
+
+    assembled = Response(
+        content=tee.body,
+        status_code=tee.status_code,
+        headers=tee.headers,
+    )
+
+    async def _store() -> None:
+        try:
+            payload_obj: object = json.loads(tee.body) if tee.body else None
+        except json.JSONDecodeError:
+            return
+        if not isinstance(payload_obj, dict):
+            return
+        payload = cast(dict[str, object], payload_obj)
+        await maybe_store_cache_entry(
+            request=request,
+            body=body,
+            response=assembled,
+            payload=payload,
+            query=lookup_ctx.query,
+            model=lookup_ctx.model,
+            raw_scope=lookup_ctx.raw_scope,
+            scope_storage=lookup_ctx.scope_storage,
+            query_embedding=query_embedding,
+            response_allows_cache_store=response_allows_cache_store,
+            response_shape_allows_cache_store=response_shape_allows_cache_store,
+            cache_record_from_response=cache_record_from_response,
+            cache_put=cache_put,
+        )
+
+    asyncio.create_task(_store())
+    return tee.status_code
