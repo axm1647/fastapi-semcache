@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import time
 from typing import cast
 
 import pytest
@@ -119,11 +118,12 @@ def test_tee_mode_e2e_miss_then_hit_json_response() -> None:
     assert r1.headers.get("X-Cache") == "MISS"
     assert r1.json() == {"streamed": True}
 
-    time.sleep(0.08)
+    # A second request re-enters the anyio event loop, which drives the
+    # background _store() task to completion before the response returns.
+    # time.sleep would block the OS thread and starve the event loop.
+    r2 = client.post("/v1/chat", json=_LLM_BODY)
 
     assert fake.put_count == 1
-
-    r2 = client.post("/v1/chat", json=_LLM_BODY)
     assert r2.status_code == 200
     assert r2.headers.get("X-Cache") == "HIT"
     assert r2.json() == {"streamed": True}
