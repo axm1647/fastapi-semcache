@@ -54,11 +54,18 @@ def response_allows_cache_store(response: Response) -> bool:
     Returns:
         False when Cache-Control has no-store or private, or Set-Cookie is present.
     """
-    if any(name.lower() == b"set-cookie" for name, _ in response.raw_headers):
-        return False
-    cache_control = response.headers.get("cache-control")
-    if cache_control is None:
+    # Use raw ASGI headers consistently for both Set-Cookie and Cache-Control checks
+    # to avoid drift if Starlette's header mapping behavior diverges from raw_headers.
+    cache_control_value: bytes | None = None
+    for name, value in response.raw_headers:
+        lower_name = name.lower()
+        if lower_name == b"set-cookie":
+            return False
+        if lower_name == b"cache-control" and cache_control_value is None:
+            cache_control_value = value
+    if cache_control_value is None:
         return True
+    cache_control = cache_control_value.decode("latin-1", "ignore")
     directives = {
         part.strip().lower() for part in cache_control.split(",") if part.strip()
     }
