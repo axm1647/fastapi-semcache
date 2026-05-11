@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import inspect
 import logging
-from collections.abc import Awaitable, Callable, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Sequence
 from typing import TYPE_CHECKING
 
 from starlette.exceptions import HTTPException
@@ -53,7 +53,6 @@ from ...core.extractors import (
 )
 from ...core.coordination import MiddlewareCoordination
 from ...core.replay import (
-    build_hit_headers,
     build_miss_headers,
     cache_record_from_response,
     merge_response_headers,
@@ -278,308 +277,6 @@ class SemanticCacheMiddleware:
                     cache_value,
                 )
 
-    async def _default_extract_model(self, request: Request, body: bytes) -> str | None:
-        """Read model from header or JSON body.
-
-        Args:
-            request: Current request.
-            body: Raw body bytes.
-
-        Returns:
-            Model name if present, else None.
-        """
-        return await default_extract_model(
-            request,
-            body,
-            model_header_name=self._model_header_name,
-        )
-
-    async def _default_extract_scope_from_request_context(
-        self, request: Request, body: bytes
-    ) -> str | None:
-        """Read scope via ``default_extract_scope_from_request_context``.
-
-        Args:
-            request: Current request.
-            body: Raw body bytes.
-
-        Returns:
-            Non-empty scope string when present, else None.
-        """
-        return await default_extract_scope_from_request_context(
-            request,
-            body,
-            scope_header_name=self._scope_header_name,
-        )
-
-    def _hit_headers(self, result: CacheResult) -> dict[str, str]:
-        """Build response headers for a cache hit.
-
-        Args:
-            result: Successful lookup result.
-
-        Returns:
-            Header map including ``X-Cache-*`` entries.
-        """
-        return build_hit_headers(
-            result=result,
-            cache_header_name=self._HEADER_CACHE,
-            source_header_name=self._HEADER_SOURCE,
-            similarity_header_name=self._HEADER_SIMILARITY,
-        )
-
-    def _miss_headers(self, *, cache_read_error: bool = False) -> dict[str, str]:
-        """Return headers attached to uncached or pass-through responses.
-
-        Args:
-            cache_read_error: When True, add ``X-Cache-Error: 1`` (read path failed).
-
-        Returns:
-            Header map with ``X-Cache: MISS`` and optional error marker.
-        """
-        return build_miss_headers(
-            cache_header_name=self._HEADER_CACHE,
-            cache_error_header_name=self._HEADER_CACHE_ERROR,
-            cache_read_error=cache_read_error,
-        )
-
-    def _log_cache_get_failure(
-        self,
-        request: Request,
-        *,
-        query: str,
-        model: str | None,
-        scope: str | None = None,
-        phase: str,
-        exc: Exception,
-    ) -> None:
-        """Emit a single structured warning when ``cache.get`` fails.
-
-        Args:
-            request: Current request (path and optional request id only).
-            query: Cache key text; only a snippet is logged.
-            model: Optional model key; truncated in logs.
-            scope: Optional tenant scope; truncated in logs.
-            phase: ``preflight`` or ``double_check`` for disambiguation.
-            exc: The exception raised by the cache layer.
-        """
-        log_cache_get_failure(
-            request=request,
-            query=query,
-            model=model,
-            scope=scope,
-            phase=phase,
-            exc=exc,
-        )
-
-    def _log_extraction_failure(
-        self,
-        request: Request,
-        *,
-        phase: str,
-        exc: Exception,
-    ) -> None:
-        """Emit a diagnostic warning when an extractor raises.
-
-        Args:
-            request: Current request (path and optional request id only).
-            phase: ``extract_query``, ``extract_model``, or ``extract_scope`` for log
-                filtering.
-            exc: The exception raised by the extractor.
-        """
-        log_extraction_failure(
-            request=request,
-            phase=phase,
-            exc=exc,
-        )
-
-    async def _cache_get_fail_open(
-        self,
-        request: Request,
-        query: str,
-        model: str | None,
-        *,
-        scope: str | None,
-        storage_scope_key: str,
-        phase: str,
-    ) -> tuple[CacheResult, bool]:
-        """Run ``cache.get`` and map failures to a miss without raising.
-
-        Args:
-            request: Current request (for logging context).
-            query: Cache lookup text.
-            model: Optional embedder routing key.
-            scope: Optional tenant or namespace for logs (raw extractor output).
-            storage_scope_key: Key already resolved via ``resolve_cache_scope`` for
-                this request (passed to ``SemanticCache.get`` as ``storage_scope_key``).
-            phase: Log label for this read (preflight vs double_check).
-
-        Returns:
-            ``(result, cache_read_error)`` where ``cache_read_error`` is True if
-            ``get`` raised and the result is a synthetic miss.
-        """
-        return await cache_get_fail_open(
-            cache_get=lambda q, m, storage: self._cache.get(
-                q,
-                model=m,
-                storage_scope_key=storage,
-            ),
-            query=query,
-            model=model,
-            scope=scope,
-            storage_scope_key=storage_scope_key,
-            on_failure=lambda q, m, scp, ph, exc: self._log_cache_get_failure(
-                request,
-                query=q,
-                model=m,
-                scope=scp,
-                phase=ph,
-                exc=exc,
-            ),
-            phase=phase,
-        )
-
-    def _merge_response_headers(
-        self,
-        response: Response,
-        extra: Mapping[str, str],
-    ) -> None:
-        """Merge ``extra`` into ``response.headers`` in place.
-
-        Args:
-            response: ASGI response whose headers are mutated.
-            extra: Additional header keys and values.
-        """
-        merge_response_headers(response, extra)
-
-    def _cache_record_from_response(
-        self,
-        *,
-        payload: dict[str, object],
-        response: Response,
-    ) -> dict[str, object]:
-        """Build a cache record with payload and response replay metadata.
-
-        Args:
-            payload: Parsed JSON object body from the upstream response.
-            response: Upstream response to mirror on future cache hits.
-
-        Returns:
-            Cache record dictionary with JSON body plus replay metadata.
-        """
-        return cache_record_from_response(
-            payload=payload,
-            response=response,
-            cache_record_marker=self._CACHE_RECORD_MARKER,
-        )
-
-    def _response_allows_cache_store(self, response: Response) -> bool:
-        """Return True when upstream response headers permit cache storage.
-
-        Args:
-            response: Upstream response candidate for cache persistence.
-
-        Returns:
-            False when ``Cache-Control`` has ``no-store`` or ``private``, or when
-            ``Set-Cookie`` is present.
-        """
-        return response_allows_cache_store(response)
-
-    async def _response_shape_allows_cache_store(
-        self,
-        context: ResponseValidationContext,
-    ) -> bool:
-        """Return True when the optional response validator accepts a payload.
-
-        Args:
-            context: Response details and parsed JSON payload to validate.
-
-        Returns:
-            True when no validator is configured, or when the validator accepts the
-            payload. False means the response is returned but not stored.
-        """
-        return await response_shape_allows_cache_store(
-            context=context,
-            validate_response=self._validate_response,
-            on_validation_failure=lambda ctx, exc: log_response_validation_failure(
-                request=ctx.request,
-                model=ctx.model,
-                scope=ctx.scope,
-                exc=exc,
-            ),
-            on_validation_rejected=lambda ctx: log_response_validation_rejected(
-                request=ctx.request,
-                model=ctx.model,
-                scope=ctx.scope,
-            ),
-        )
-
-    def _response_from_cache_hit(
-        self,
-        *,
-        result: CacheResult,
-    ) -> Response | None:
-        """Convert a cache hit result to the HTTP response sent to clients.
-
-        Args:
-            result: Cache lookup output with payload and similarity metadata.
-
-        Returns:
-            Response with original status and headers when the stored record uses
-            the replay envelope. Returns None when the hit payload is not
-            replayable (for example missing the replay envelope).
-        """
-        return response_from_cache_hit(
-            result=result,
-            cache_record_marker=self._CACHE_RECORD_MARKER,
-            cache_header_name=self._HEADER_CACHE,
-            source_header_name=self._HEADER_SOURCE,
-            similarity_header_name=self._HEADER_SIMILARITY,
-        )
-
-    async def _read_body(self, receive: Receive) -> bytes:
-        """Read and buffer the incoming request body from ASGI ``receive``.
-
-        Args:
-            receive: ASGI receive callable for the current request.
-
-        Returns:
-            Full request body bytes.
-        """
-        return await read_body(receive, max_body_bytes=self._max_request_body_bytes)
-
-    async def _call_downstream(self, scope: Scope, body: bytes) -> Response:
-        """Invoke downstream ASGI app and buffer its response.
-
-        Args:
-            scope: Current request ASGI scope.
-            body: Full buffered request body.
-
-        Returns:
-            Buffered Starlette ``Response`` built from downstream ASGI messages.
-        """
-        return await call_downstream(
-            self.app,
-            scope,
-            body,
-            max_body_bytes=self._max_response_body_bytes,
-        )
-
-    async def _send_response(
-        self,
-        response: Response,
-        scope: Scope,
-        send: Send,
-    ) -> None:
-        """Emit a Starlette ``Response`` over ASGI ``send``.
-
-        Args:
-            response: Response object to emit.
-            scope: Current request ASGI scope.
-            send: ASGI send callable.
-        """
-        await send_response(response, scope, send)
-
     async def _cache_put_with_optional_embedding(
         self,
         query: str,
@@ -612,78 +309,6 @@ class SemanticCacheMiddleware:
             model=model,
             storage_scope_key=storage_scope_key,
         )
-
-    def _shape_validator(
-        self,
-    ) -> "Callable[[Request, bytes, Response, dict[str, object], str | None, str | None], Awaitable[bool]]":
-        """Return an async callable that validates response shape for cache storage.
-
-        Wraps ``_response_shape_allows_cache_store`` so both the buffered and tee
-        paths share a single construction point for ``ResponseValidationContext``.
-        If ``ResponseValidationContext`` gains new fields in the future, only this
-        method needs updating.
-
-        Returns:
-            Async function with the signature expected by ``maybe_store_cache_entry``
-            and ``stream_tee_and_store``.
-        """
-
-        async def _validate(
-            req: Request,
-            req_body: bytes,
-            resp: Response,
-            pld: dict[str, object],
-            mdl: str | None,
-            scp: str | None,
-        ) -> bool:
-            return await self._response_shape_allows_cache_store(
-                ResponseValidationContext(
-                    request=req,
-                    request_body=req_body,
-                    response=resp,
-                    payload=pld,
-                    model=mdl,
-                    scope=scp,
-                )
-            )
-
-        return _validate
-
-    def _record_builder(
-        self,
-    ) -> "Callable[[dict[str, object], Response], dict[str, object]]":
-        """Return a callable that builds a cache record from a payload and response.
-
-        Returns:
-            Function with the signature expected by ``maybe_store_cache_entry``
-            and ``stream_tee_and_store``.
-        """
-        return lambda pld, resp: self._cache_record_from_response(
-            payload=pld, response=resp
-        )
-
-    def _put_callback(
-        self,
-    ) -> "Callable[[str, dict[str, object], str | None, str, list[float] | None], Awaitable[None]]":
-        """Return an async callable that persists a cache record.
-
-        Returns:
-            Coroutine function with the signature expected by
-            ``maybe_store_cache_entry`` and ``stream_tee_and_store``.
-        """
-
-        async def _put(
-            q: str,
-            record: dict[str, object],
-            mdl: str | None,
-            storage: str,
-            embedding: list[float] | None,
-        ) -> None:
-            await self._cache_put_with_optional_embedding(
-                q, record, mdl, storage, embedding
-            )
-
-        return _put
 
     async def _evict_unreplayable_cache_row(
         self,
@@ -777,7 +402,7 @@ class SemanticCacheMiddleware:
             await self.app(scope, receive, send)
             return
         try:
-            body = await self._read_body(receive)
+            body = await read_body(receive, max_body_bytes=self._max_request_body_bytes)
         except HTTPException as exc:
             detail = exc.detail
             text = (
@@ -787,7 +412,7 @@ class SemanticCacheMiddleware:
                 )
                 else "Request body exceeds configured maximum size."
             )
-            await self._send_response(
+            await send_response(
                 PlainTextResponse(text, status_code=exc.status_code),
                 scope,
                 send,
@@ -804,6 +429,82 @@ class SemanticCacheMiddleware:
 
         request = Request(scope, receive=_request_receive)
 
+        # -- bound helpers used throughout this request --
+        model_header = self._model_header_name
+        scope_header = self._scope_header_name
+        marker = self._CACHE_RECORD_MARKER
+        validate_response = self._validate_response
+        max_resp_bytes = self._max_response_body_bytes
+
+        async def _do_cache_get(
+            query: str, model: str | None, storage: str, *, phase: str, raw_scope: str | None
+        ) -> tuple[CacheResult, bool]:
+            return await cache_get_fail_open(
+                cache_get=lambda q, m, s: self._cache.get(q, model=m, storage_scope_key=s),
+                query=query,
+                model=model,
+                scope=raw_scope,
+                storage_scope_key=storage,
+                on_failure=lambda q, m, scp, ph, exc: log_cache_get_failure(
+                    request=request,
+                    query=q,
+                    model=m,
+                    scope=scp,
+                    phase=ph,
+                    exc=exc,
+                ),
+                phase=phase,
+            )
+
+        async def _shape_validator(
+            req: Request,
+            req_body: bytes,
+            resp: Response,
+            pld: dict[str, object],
+            mdl: str | None,
+            scp: str | None,
+        ) -> bool:
+            return await response_shape_allows_cache_store(
+                context=ResponseValidationContext(
+                    request=req,
+                    request_body=req_body,
+                    response=resp,
+                    payload=pld,
+                    model=mdl,
+                    scope=scp,
+                ),
+                validate_response=validate_response,
+                on_validation_failure=lambda ctx, exc: log_response_validation_failure(
+                    request=ctx.request,
+                    model=ctx.model,
+                    scope=ctx.scope,
+                    exc=exc,
+                ),
+                on_validation_rejected=lambda ctx: log_response_validation_rejected(
+                    request=ctx.request,
+                    model=ctx.model,
+                    scope=ctx.scope,
+                ),
+            )
+
+        def _record_builder(pld: dict[str, object], resp: Response) -> dict[str, object]:
+            return cache_record_from_response(
+                payload=pld,
+                response=resp,
+                cache_record_marker=marker,
+            )
+
+        async def _put_callback(
+            q: str,
+            record: dict[str, object],
+            mdl: str | None,
+            storage: str,
+            embedding: list[float] | None,
+        ) -> None:
+            await self._cache_put_with_optional_embedding(q, record, mdl, storage, embedding)
+
+        # -- end bound helpers --
+
         lookup_context = await extract_lookup_context_or_passthrough(
             request=request,
             scope=scope,
@@ -812,12 +513,17 @@ class SemanticCacheMiddleware:
             require_cache_scope=self._require_cache_scope,
             scope_settings=self._scope_settings,
             extract_query=self._extract_query,
-            extract_model=self._extract_model or self._default_extract_model,
-            extract_scope_required=self._extract_scope
-            or self._default_extract_scope_from_request_context,
+            extract_model=self._extract_model or (
+                lambda req, b: default_extract_model(req, b, model_header_name=model_header)
+            ),
+            extract_scope_required=self._extract_scope or (
+                lambda req, b: default_extract_scope_from_request_context(
+                    req, b, scope_header_name=scope_header
+                )
+            ),
             extract_scope_optional=self._extract_scope,
-            log_extraction_failure=lambda req, phase, exc: self._log_extraction_failure(
-                req,
+            log_extraction_failure=lambda req, phase, exc: log_extraction_failure(
+                request=req,
                 phase=phase,
                 exc=exc,
             ),
@@ -825,8 +531,10 @@ class SemanticCacheMiddleware:
                 scope=s,
                 body=b,
                 send=out_send,
-                call_downstream=self._call_downstream,
-                send_response=self._send_response,
+                call_downstream=lambda sc, bd: call_downstream(
+                    self.app, sc, bd, max_body_bytes=max_resp_bytes
+                ),
+                send_response=send_response,
             ),
         )
         if lookup_context is None:
@@ -836,22 +544,21 @@ class SemanticCacheMiddleware:
         raw_scope = lookup_context.raw_scope
         scope_storage = lookup_context.scope_storage
 
-        result, cache_read_error = await self._cache_get_fail_open(
-            request,
-            query,
-            model,
-            scope=raw_scope,
-            storage_scope_key=scope_storage,
-            phase="preflight",
+        result, cache_read_error = await _do_cache_get(
+            query, model, scope_storage, phase="preflight", raw_scope=raw_scope
         )
         if await send_cache_hit_if_available(
             result=result,
             scope=scope,
             send=send,
-            response_from_cache_hit=lambda res: self._response_from_cache_hit(
-                result=res
+            response_from_cache_hit=lambda res: response_from_cache_hit(
+                result=res,
+                cache_record_marker=marker,
+                cache_header_name=self._HEADER_CACHE,
+                source_header_name=self._HEADER_SOURCE,
+                similarity_header_name=self._HEADER_SIMILARITY,
             ),
-            send_response=self._send_response,
+            send_response=send_response,
             on_unreplayable_hit=lambda res: self._evict_unreplayable_cache_row(
                 res,
                 model=model,
@@ -863,23 +570,22 @@ class SemanticCacheMiddleware:
 
         flight = await self._coordination.get_flight_lock(query, model, scope_storage)
         async with flight:
-            result, inner_err = await self._cache_get_fail_open(
-                request,
-                query,
-                model,
-                scope=raw_scope,
-                storage_scope_key=scope_storage,
-                phase="double_check",
+            result, inner_err = await _do_cache_get(
+                query, model, scope_storage, phase="double_check", raw_scope=raw_scope
             )
             cache_read_error = cache_read_error or inner_err
             if await send_cache_hit_if_available(
                 result=result,
                 scope=scope,
                 send=send,
-                response_from_cache_hit=lambda res: self._response_from_cache_hit(
-                    result=res
+                response_from_cache_hit=lambda res: response_from_cache_hit(
+                    result=res,
+                    cache_record_marker=marker,
+                    cache_header_name=self._HEADER_CACHE,
+                    source_header_name=self._HEADER_SOURCE,
+                    similarity_header_name=self._HEADER_SIMILARITY,
                 ),
-                send_response=self._send_response,
+                send_response=send_response,
                 on_unreplayable_hit=lambda res: self._evict_unreplayable_cache_row(
                     res,
                     model=model,
@@ -895,14 +601,20 @@ class SemanticCacheMiddleware:
                     send=send,
                     cache_read_error=cache_read_error,
                     header_circuit=self._HEADER_CIRCUIT,
-                    miss_headers=lambda read_error: self._miss_headers(
-                        cache_read_error=read_error
+                    miss_headers=lambda read_error: build_miss_headers(
+                        cache_header_name=self._HEADER_CACHE,
+                        cache_error_header_name=self._HEADER_CACHE_ERROR,
+                        cache_read_error=read_error,
                     ),
-                    send_response=self._send_response,
+                    send_response=send_response,
                 )
                 return
 
-            miss = self._miss_headers(cache_read_error=cache_read_error)
+            miss = build_miss_headers(
+                cache_header_name=self._HEADER_CACHE,
+                cache_error_header_name=self._HEADER_CACHE_ERROR,
+                cache_read_error=cache_read_error,
+            )
             if self._scope_settings.response_mode == "tee":
                 upstream_status = await stream_tee_and_store(
                     app=self.app,
@@ -912,26 +624,26 @@ class SemanticCacheMiddleware:
                     lookup_ctx=lookup_context,
                     request=request,
                     query_embedding=result.query_embedding,
-                    max_body_bytes=self._max_response_body_bytes,
+                    max_body_bytes=max_resp_bytes,
                     miss_headers=miss,
-                    response_allows_cache_store=self._response_allows_cache_store,
-                    response_shape_allows_cache_store=self._shape_validator(),
-                    cache_record_from_response=self._record_builder(),
-                    cache_put=self._put_callback(),
+                    response_allows_cache_store=response_allows_cache_store,
+                    response_shape_allows_cache_store=_shape_validator,
+                    cache_record_from_response=_record_builder,
+                    cache_put=_put_callback,
                 )
                 await self._coordination.record_upstream_status_for_circuit(
                     upstream_status
                 )
                 return
 
-            response = await self._call_downstream(scope, body)
+            response = await call_downstream(self.app, scope, body, max_body_bytes=max_resp_bytes)
             await self._coordination.record_upstream_status_for_circuit(
                 response.status_code
             )
             final, payload = prepare_response_for_client(
                 response=response,
                 miss_headers=miss,
-                merge_response_headers=self._merge_response_headers,
+                merge_response_headers=merge_response_headers,
             )
 
             await maybe_store_cache_entry(
@@ -944,11 +656,11 @@ class SemanticCacheMiddleware:
                 raw_scope=raw_scope,
                 scope_storage=scope_storage,
                 query_embedding=result.query_embedding,
-                response_allows_cache_store=self._response_allows_cache_store,
-                response_shape_allows_cache_store=self._shape_validator(),
-                cache_record_from_response=self._record_builder(),
-                cache_put=self._put_callback(),
+                response_allows_cache_store=response_allows_cache_store,
+                response_shape_allows_cache_store=_shape_validator,
+                cache_record_from_response=_record_builder,
+                cache_put=_put_callback,
             )
 
-            await self._send_response(final, scope, send)
+            await send_response(final, scope, send)
             return
