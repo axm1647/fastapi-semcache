@@ -222,9 +222,15 @@ See `create_semantic_cache_proxy_app` in `semanticcache.proxy` for timeout, TLS 
 
 ## Streaming and chunked responses
 
-Today the middleware **buffers the full downstream response** before sending it to the client. That applies even when your route returns a streaming-style response (for example token streaming); the bytes are collected first, then returned as one response. Cached hits are served as ordinary JSON bodies. The reverse proxy uses httpx's full response body, not a streamed upstream read.
+By default, `fastapi-semcache` uses a **buffered** response mode: the middleware **buffers the full downstream response** before sending it to the client and before writing to the cache. Cached hits are served as ordinary JSON bodies.
 
-**Chunked pass-through and streaming-friendly caching are planned** so SSE and similar flows can deliver early bytes while still integrating with semantic caching where feasible.
+When you enable `response_mode="tee"` on `CacheSettings`, cache **misses stream through to the client as chunks arrive** while a side buffer is accumulated for validation and storage. In tee mode for the FastAPI middleware:
+
+- The client sees true streaming behavior (for example token streaming or SSE) on misses.
+- The cache still stores only **fully assembled JSON object responses** after the stream completes.
+- The tee path respects the same cache-store rules as the buffered path (headers, validation, and size limits).
+
+For the reverse proxy (`create_semantic_cache_proxy_app`), upstream responses are currently fetched via `httpx.AsyncClient` using a buffered body, but the same `response_mode` setting controls how the proxy delivers misses to clients and writes to the cache (buffered vs tee at the ASGI layer). Cache hits today are still replayed as non-streaming JSON responses; **streaming-style cache hit replay (for example synthetic SSE)** is a planned enhancement.
 
 ## Current features
 
@@ -251,7 +257,7 @@ Today the middleware **buffers the full downstream response** before sending it 
 
 ## Future support
 
-- **Chunked / streaming responses** for the middleware (and related proxy behavior): pass-through streaming instead of full buffering; see [Streaming and chunked responses](#streaming-and-chunked-responses).
+- **Streaming cache hits / synthetic SSE replay** for the middleware and proxy, so certain cached responses can be replayed in a streaming-friendly fashion rather than as a single JSON payload; see [Streaming and chunked responses](#streaming-and-chunked-responses).
 - **Django** and **Flask** middleware for in-app semantic caching (not yet shipped; same role as the FastAPI middleware).
 
 Embeddings from the following providers are planned:
