@@ -87,10 +87,20 @@ async def default_extract_query(request: Request, body: bytes) -> str | None:
     Returns:
         Query text for embedding, or None if the body should not be cached.
     """
-    if not body.strip():
-        return None
     ct = (request.headers.get("content-type") or "").lower()
-    looks_json = "json" in ct or body.lstrip()[:1] in (b"{", b"[")
+    body_stripped = body.lstrip()
+    if not body_stripped:
+        return None
+
+    # Prefer explicit JSON content types and only fall back to byte sniffing
+    # (after stripping leading whitespace) when the Content-Type is missing or
+    # clearly text-based. This avoids aggressively treating arbitrary binary
+    # payloads that happen to start with "{" as JSON.
+    is_json_content_type = "application/json" in ct or "+json" in ct
+    looks_json = is_json_content_type or (
+        (not ct or ct.startswith("text/"))
+        and body_stripped[:1] in (b"{", b"[")
+    )
     if not looks_json:
         return None
     try:
