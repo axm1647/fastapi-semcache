@@ -2,12 +2,100 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+from dataclasses import dataclass, field
+
 from starlette.exceptions import HTTPException
 from starlette.responses import Response
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 DEFAULT_MAX_BODY_BYTES: int = 10 * 1024 * 1024
 """Default cap (10 MiB) for request and response bodies when a limit is enabled."""
+
+
+@dataclass
+class TeeSend:
+    """ASGI send wrapper that forwards messages while buffering response body chunks.
+
+    Forwards each message to ``real_send`` immediately so the client sees streaming
+    behavior. Accumulates ``http.response.body`` payloads in a side buffer until
+    the stream completes or ``max_body_bytes`` is exceeded.
+
+    Attributes:
+        real_send: Underlying ASGI ``send`` callable.
+        max_body_bytes: Optional cap on buffered body size; when exceeded,
+            ``over_limit`` is set, buffered chunks are discarded, and forwarding
+            continues.
+        merge_into_start: Optional header map appended to ``http.response.start``
+            before forwarding (for example ``X-Cache: MISS``).
+        status_code: Populated from the first ``http.response.start`` message.
+        headers: Response headers from ``http.response.start`` (latin-1 decoded).
+        over_limit: True when buffering was stopped due to ``max_body_bytes``.
+
+    Example:
+        After ``await app(scope, replay_receive, tee)``, inspect ``tee.body``,
+        ``tee.status_code``, and ``tee.headers``; skip cache store when
+        ``tee.over_limit``.
+    """
+
+    real_send: Send
+    max_body_bytes: int | None = None
+    merge_into_start: Mapping[str, str] | None = None
+
+    status_code: int = field(default=500, init=False)
+    headers: dict[str, str] = field(default_factory=dict, init=False)
+    _body_chunks: list[bytes] = field(default_factory=list, init=False)
+    _buffered_total: int = field(default=0, init=False)
+    over_limit: bool = field(default=False, init=False)
+
+    async def __call__(self, message: Message) -> None:
+        """Forward ``message`` to ``real_send`` and update tee state.
+
+        Args:
+            message: ASGI HTTP response message.
+        """
+        msg_type = message["type"]
+
+        if msg_type == "http.response.start":
+            self.status_code = int(message["status"])
+            raw_headers = list(message.get("headers", []))
+            merged: list[tuple[bytes, bytes]] = []
+            if self.merge_into_start:
+                for hk, hv in self.merge_into_start.items():
+                    merged.append((hk.encode("latin-1"), hv.encode("latin-1")))
+            combined = raw_headers + merged
+            parsed: dict[str, str] = {}
+            for key, value in combined:
+                if isinstance(key, bytes) and isinstance(value, bytes):
+                    parsed[key.decode("latin-1")] = value.decode("latin-1")
+            self.headers = parsed
+            out_message = dict(message)
+            out_message["headers"] = combined
+            await self.real_send(out_message)
+            return
+
+        if msg_type == "http.response.body":
+            chunk = message.get("body", b"")
+            if not isinstance(chunk, bytes):
+                chunk = b""
+            chunk = chunk or b""
+            await self.real_send(message)
+            if self.over_limit:
+                return
+            if self.max_body_bytes is not None:
+                next_total = self._buffered_total + len(chunk)
+                if next_total > self.max_body_bytes:
+                    self.over_limit = True
+                    self._body_chunks.clear()
+                    return
+            if chunk:
+                self._body_chunks.append(chunk)
+                self._buffered_total += len(chunk)
+
+    @property
+    def body(self) -> bytes:
+        """Concatenated buffered body bytes after the response stream completes."""
+        return b"".join(self._body_chunks)
 
 
 async def read_body(

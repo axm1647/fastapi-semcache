@@ -37,6 +37,7 @@ from .flow import (
     send_cache_hit_if_available,
     send_circuit_open_response,
     send_passthrough,
+    stream_tee_and_store,
 )
 from .logging_utils import (
     log_cache_get_failure,
@@ -174,15 +175,17 @@ class SemanticCacheMiddleware:
                 ``ResponseValidationContext`` before a successful JSON object is stored.
                 Return False to skip storing malformed or route-mismatched payloads.
             cache_settings: Optional settings override; defaults to
-                ``get_cache_settings()`` (429 circuit breaker and flight-lock cap).
+                ``get_cache_settings()`` (429 circuit breaker, flight-lock cap, and
+                ``response_mode`` when the cache does not supply its own settings).
                 When ``cache`` exposes a ``settings`` attribute (as ``SemanticCache``
-                does), ``require_cache_scope`` and the middleware scope gate use it so
-                they stay aligned with ``SemanticCache``; otherwise ``cache_settings``
-                applies. This source also controls whether requests that include an
-                ``Authorization`` header are cacheable. When both ``cache_settings``
-                and ``cache.settings`` are provided and disagree on user-facing flags
-                (``require_cache_scope`` or ``cache_authorized_requests``), a warning
-                is logged so a likely misconfiguration is visible at startup.
+                does), ``require_cache_scope``, ``response_mode``, and the middleware
+                scope gate use it so they stay aligned with ``SemanticCache``;
+                otherwise ``cache_settings`` applies. This source also controls whether
+                requests that include an ``Authorization`` header are cacheable. When
+                both ``cache_settings`` and ``cache.settings`` are provided and
+                disagree on user-facing flags (``require_cache_scope`` or
+                ``cache_authorized_requests``), a warning is logged so a likely
+                misconfiguration is visible at startup.
             max_request_body_bytes: Maximum size of the buffered request body (default
                 ``DEFAULT_MAX_BODY_BYTES``, 10 MiB). When exceeded, the client receives
                 HTTP 413. Set to ``None`` to disable the limit (not recommended in
@@ -543,9 +546,7 @@ class SemanticCacheMiddleware:
         Returns:
             Full request body bytes.
         """
-        return await read_body(
-            receive, max_body_bytes=self._max_request_body_bytes
-        )
+        return await read_body(receive, max_body_bytes=self._max_request_body_bytes)
 
     async def _call_downstream(self, scope: Scope, body: bytes) -> Response:
         """Invoke downstream ASGI app and buffer its response.
@@ -611,6 +612,78 @@ class SemanticCacheMiddleware:
             model=model,
             storage_scope_key=storage_scope_key,
         )
+
+    def _shape_validator(
+        self,
+    ) -> "Callable[[Request, bytes, Response, dict[str, object], str | None, str | None], Awaitable[bool]]":
+        """Return an async callable that validates response shape for cache storage.
+
+        Wraps ``_response_shape_allows_cache_store`` so both the buffered and tee
+        paths share a single construction point for ``ResponseValidationContext``.
+        If ``ResponseValidationContext`` gains new fields in the future, only this
+        method needs updating.
+
+        Returns:
+            Async function with the signature expected by ``maybe_store_cache_entry``
+            and ``stream_tee_and_store``.
+        """
+
+        async def _validate(
+            req: Request,
+            req_body: bytes,
+            resp: Response,
+            pld: dict[str, object],
+            mdl: str | None,
+            scp: str | None,
+        ) -> bool:
+            return await self._response_shape_allows_cache_store(
+                ResponseValidationContext(
+                    request=req,
+                    request_body=req_body,
+                    response=resp,
+                    payload=pld,
+                    model=mdl,
+                    scope=scp,
+                )
+            )
+
+        return _validate
+
+    def _record_builder(
+        self,
+    ) -> "Callable[[dict[str, object], Response], dict[str, object]]":
+        """Return a callable that builds a cache record from a payload and response.
+
+        Returns:
+            Function with the signature expected by ``maybe_store_cache_entry``
+            and ``stream_tee_and_store``.
+        """
+        return lambda pld, resp: self._cache_record_from_response(
+            payload=pld, response=resp
+        )
+
+    def _put_callback(
+        self,
+    ) -> "Callable[[str, dict[str, object], str | None, str, list[float] | None], Awaitable[None]]":
+        """Return an async callable that persists a cache record.
+
+        Returns:
+            Coroutine function with the signature expected by
+            ``maybe_store_cache_entry`` and ``stream_tee_and_store``.
+        """
+
+        async def _put(
+            q: str,
+            record: dict[str, object],
+            mdl: str | None,
+            storage: str,
+            embedding: list[float] | None,
+        ) -> None:
+            await self._cache_put_with_optional_embedding(
+                q, record, mdl, storage, embedding
+            )
+
+        return _put
 
     async def _evict_unreplayable_cache_row(
         self,
@@ -829,11 +902,32 @@ class SemanticCacheMiddleware:
                 )
                 return
 
+            miss = self._miss_headers(cache_read_error=cache_read_error)
+            if self._scope_settings.response_mode == "tee":
+                upstream_status = await stream_tee_and_store(
+                    app=self.app,
+                    scope=scope,
+                    body=body,
+                    send=send,
+                    lookup_ctx=lookup_context,
+                    request=request,
+                    query_embedding=result.query_embedding,
+                    max_body_bytes=self._max_response_body_bytes,
+                    miss_headers=miss,
+                    response_allows_cache_store=self._response_allows_cache_store,
+                    response_shape_allows_cache_store=self._shape_validator(),
+                    cache_record_from_response=self._record_builder(),
+                    cache_put=self._put_callback(),
+                )
+                await self._coordination.record_upstream_status_for_circuit(
+                    upstream_status
+                )
+                return
+
             response = await self._call_downstream(scope, body)
             await self._coordination.record_upstream_status_for_circuit(
                 response.status_code
             )
-            miss = self._miss_headers(cache_read_error=cache_read_error)
             final, payload = prepare_response_for_client(
                 response=response,
                 miss_headers=miss,
@@ -851,27 +945,9 @@ class SemanticCacheMiddleware:
                 scope_storage=scope_storage,
                 query_embedding=result.query_embedding,
                 response_allows_cache_store=self._response_allows_cache_store,
-                response_shape_allows_cache_store=lambda req, req_body, resp, pld, mdl, scp: self._response_shape_allows_cache_store(
-                    ResponseValidationContext(
-                        request=req,
-                        request_body=req_body,
-                        response=resp,
-                        payload=pld,
-                        model=mdl,
-                        scope=scp,
-                    )
-                ),
-                cache_record_from_response=lambda pld, resp: self._cache_record_from_response(
-                    payload=pld,
-                    response=resp,
-                ),
-                cache_put=lambda q, record, mdl, storage, embedding: self._cache_put_with_optional_embedding(
-                    q,
-                    record,
-                    mdl,
-                    storage,
-                    embedding,
-                ),
+                response_shape_allows_cache_store=self._shape_validator(),
+                cache_record_from_response=self._record_builder(),
+                cache_put=self._put_callback(),
             )
 
             await self._send_response(final, scope, send)
