@@ -625,6 +625,7 @@ class SemanticCacheMiddleware:
                     request=request,
                     query_embedding=result.query_embedding,
                     max_body_bytes=max_resp_bytes,
+                    upstream_timeout_seconds=self._cache_settings.upstream_timeout_seconds,
                     miss_headers=miss,
                     response_allows_cache_store=response_allows_cache_store,
                     response_shape_allows_cache_store=_shape_validator,

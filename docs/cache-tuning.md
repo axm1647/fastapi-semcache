@@ -179,12 +179,21 @@ tie up worker capacity. `SemanticCache` supports fail-fast timeout controls:
   ``redis.asyncio.from_url`` so stalled TCP or Redis reads cannot block the
   event loop beyond that budget at the socket layer. If you disable the store
   timeout (null/empty env), Redis uses library defaults for those socket options.
+- **`SEMANTIC_CACHE_UPSTREAM_TIMEOUT_SECONDS`**
+  (`CacheSettings.upstream_timeout_seconds`):
+  timeout budget in seconds for the upstream ASGI call when
+  `response_mode='tee'`. A slow or hung upstream in tee mode holds the
+  per-key flight lock open for its full duration, blocking all waiters for
+  that key. Setting this cap bounds how long the flight lock is held: when
+  the budget expires, the middleware cancels the upstream call, releases the
+  lock, logs a warning, and returns **HTTP 504** to the client. Defaults to
+  `None` (no cap). Has no effect in buffered mode.
 
-When these timeouts are exceeded, the cache raises a timeout exception with
-operation metadata, emits a warning log entry, and increments an in-process
-operation timeout counter (`SemanticCache.timeout_counts`) for observability.
-Middleware continues to fail open, so requests still execute against upstream
-handlers.
+When `embed_timeout_seconds` or `store_timeout_seconds` are exceeded, the
+cache raises a timeout exception with operation metadata, emits a warning log
+entry, and increments an in-process operation timeout counter
+(`SemanticCache.timeout_counts`) for observability. Middleware continues to
+fail open, so requests still execute against upstream handlers.
 
 ## Middleware in-flight lock registry
 

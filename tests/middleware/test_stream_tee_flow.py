@@ -87,6 +87,7 @@ async def test_stream_tee_and_store_forwards_chunks_and_calls_cache_put() -> Non
         request=request,
         query_embedding=[0.1, 0.2],
         max_body_bytes=None,
+        upstream_timeout_seconds=None,
         miss_headers={"X-Cache": "MISS"},
         response_allows_cache_store=lambda r: True,
         response_shape_allows_cache_store=shape_ok,
@@ -160,6 +161,7 @@ async def test_stream_tee_and_store_over_limit_skips_cache_put() -> None:
         request=request,
         query_embedding=None,
         max_body_bytes=5,
+        upstream_timeout_seconds=None,
         miss_headers={},
         response_allows_cache_store=lambda r: True,
         response_shape_allows_cache_store=shape_ok,
@@ -170,4 +172,55 @@ async def test_stream_tee_and_store_over_limit_skips_cache_put() -> None:
     await asyncio.sleep(0.05)
 
     assert client_bodies == [b"123456"]
+    cache_put.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_stream_tee_and_store_upstream_timeout_returns_504() -> None:
+    """When upstream exceeds the timeout budget, 504 is returned and cache_put is skipped."""
+
+    async def hung_app(scope: Scope, receive: Receive, send: Send) -> None:
+        await asyncio.sleep(10)
+
+    cache_put = AsyncMock()
+    scope = _scope()
+    request = Request(scope)
+    lookup = LookupContext(
+        query="q",
+        model=None,
+        raw_scope="t",
+        scope_storage="t",
+    )
+
+    async def shape_ok(
+        req: Request,
+        req_body: bytes,
+        resp: object,
+        payload: dict[str, object],
+        model: str | None,
+        raw_scope: str | None,
+    ) -> bool:
+        return True
+
+    async def noop_send(message: Message) -> None:
+        pass
+
+    status = await stream_tee_and_store(
+        app=hung_app,
+        scope=scope,
+        body=b"{}",
+        send=noop_send,
+        lookup_ctx=lookup,
+        request=request,
+        query_embedding=None,
+        max_body_bytes=None,
+        upstream_timeout_seconds=0.05,
+        miss_headers={},
+        response_allows_cache_store=lambda r: True,
+        response_shape_allows_cache_store=shape_ok,
+        cache_record_from_response=lambda p, r: p,
+        cache_put=cache_put,
+    )
+
+    assert status == 504
     cache_put.assert_not_awaited()

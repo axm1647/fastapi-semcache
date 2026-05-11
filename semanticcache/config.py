@@ -85,6 +85,17 @@ class CacheSettings(BaseSettings):
             "Set to null/empty to disable asyncio timeouts and Redis socket timeouts."
         ),
     )
+    upstream_timeout_seconds: float | None = Field(
+        default=None,
+        gt=0.0,
+        description=(
+            "Timeout budget in seconds for the upstream ASGI call when using "
+            "response_mode='tee'. When the downstream app does not complete within "
+            "this budget, the middleware cancels the call, releases the flight lock, "
+            "and returns HTTP 504 to the client. Unset (null/empty) disables the "
+            "timeout (no cap on upstream duration). Has no effect in buffered mode."
+        ),
+    )
 
     embedder_type: Literal["huggingface", "openai", "cohere", "voyage", "ollama"] = (
         "huggingface"

@@ -395,6 +395,7 @@ async def stream_tee_and_store(
     request: Request,
     query_embedding: list[float] | None,
     max_body_bytes: int | None,
+    upstream_timeout_seconds: float | None,
     response_allows_cache_store: Callable[[Response], bool],
     response_shape_allows_cache_store: Callable[
         [Request, bytes, Response, dict[str, object], str | None, str | None],
@@ -416,6 +417,11 @@ async def stream_tee_and_store(
     exceeds ``max_body_bytes``, the client still receives the full stream but
     cache storage is skipped.
 
+    When ``upstream_timeout_seconds`` is set and the downstream app does not
+    complete within that budget, ``asyncio.TimeoutError`` is caught, a 504
+    status is returned, and the flight lock is released promptly rather than
+    being held for the full stall duration.
+
     Args:
         app: Downstream ASGI application.
         scope: Current request ASGI scope.
@@ -426,6 +432,9 @@ async def stream_tee_and_store(
         query_embedding: Optional embedding from the miss path for ``cache_put``.
         max_body_bytes: Maximum bytes to retain for cache assembly; None disables
             the cap.
+        upstream_timeout_seconds: Optional cap on the upstream ASGI call duration.
+            When exceeded the function returns 504 without completing cache storage.
+            None disables the cap.
         miss_headers: Headers merged into ``http.response.start`` (for example
             ``X-Cache: MISS``).
         response_allows_cache_store: Header and policy gate for storing responses.
@@ -434,7 +443,8 @@ async def stream_tee_and_store(
         cache_put: Persists the cache record.
 
     Returns:
-        HTTP status code observed on the downstream ``http.response.start``.
+        HTTP status code observed on the downstream ``http.response.start``,
+        or 504 when ``upstream_timeout_seconds`` is exceeded.
     """
     body_sent = False
 
@@ -450,7 +460,22 @@ async def stream_tee_and_store(
         max_body_bytes=max_body_bytes,
         merge_into_start=miss_headers,
     )
-    await app(scope, replay_receive, tee)
+    try:
+        if upstream_timeout_seconds is not None:
+            await asyncio.wait_for(
+                app(scope, replay_receive, tee),
+                timeout=upstream_timeout_seconds,
+            )
+        else:
+            await app(scope, replay_receive, tee)
+    except asyncio.TimeoutError:
+        _logger.warning(
+            "Upstream tee call exceeded upstream_timeout_seconds=%.1f; "
+            "releasing flight lock. path=%s",
+            upstream_timeout_seconds,
+            scope.get("path", "?"),
+        )
+        return 504
 
     if tee.over_limit:
         _logger.warning(
