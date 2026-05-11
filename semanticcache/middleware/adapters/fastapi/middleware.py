@@ -546,9 +546,7 @@ class SemanticCacheMiddleware:
         Returns:
             Full request body bytes.
         """
-        return await read_body(
-            receive, max_body_bytes=self._max_request_body_bytes
-        )
+        return await read_body(receive, max_body_bytes=self._max_request_body_bytes)
 
     async def _call_downstream(self, scope: Scope, body: bytes) -> Response:
         """Invoke downstream ASGI app and buffer its response.
@@ -670,12 +668,22 @@ class SemanticCacheMiddleware:
         """Return an async callable that persists a cache record.
 
         Returns:
-            Function with the signature expected by ``maybe_store_cache_entry``
-            and ``stream_tee_and_store``.
+            Coroutine function with the signature expected by
+            ``maybe_store_cache_entry`` and ``stream_tee_and_store``.
         """
-        return lambda q, record, mdl, storage, embedding: self._cache_put_with_optional_embedding(
-            q, record, mdl, storage, embedding
-        )
+
+        async def _put(
+            q: str,
+            record: dict[str, object],
+            mdl: str | None,
+            storage: str,
+            embedding: list[float] | None,
+        ) -> None:
+            await self._cache_put_with_optional_embedding(
+                q, record, mdl, storage, embedding
+            )
+
+        return _put
 
     async def _evict_unreplayable_cache_row(
         self,
