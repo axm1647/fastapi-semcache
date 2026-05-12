@@ -31,7 +31,6 @@ class CacheQuery(BaseModel):
 class CacheResult(BaseModel):
     """Outcome of ``SemanticCache.get`` (hit or miss with optional payload)."""
 
-    # TODO: update to accept multiple resources
     is_hit: bool
     similarity: float | None = None
     source: CacheSource = "none"
