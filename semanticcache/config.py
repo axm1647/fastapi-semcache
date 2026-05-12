@@ -20,7 +20,10 @@ class CacheSettings(BaseSettings):
         extra="ignore",
     )
 
-    disable_proxy_app_docs: bool = True  # hides documentation urls for proxy app
+    disable_proxy_app_docs: bool = Field(
+        True,
+        description="hides documentation urls for proxy app",
+    )
 
     top_k_candidates: int = Field(
         1,
