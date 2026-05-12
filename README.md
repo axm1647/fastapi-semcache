@@ -206,7 +206,7 @@ app.add_middleware(
 )
 ```
 
-Other advanced options (`path_prefix`, HTTP 429 circuit breaker via `cache_settings`, `enabled=False`) are documented on **`SemanticCacheMiddleware`** in `semanticcache.middleware.adapters.fastapi` (or via the public import `semanticcache.middleware`). On shutdown, call `await cache.close()` from a lifespan handler if you want pools closed cleanly.
+Other advanced options (`path_prefix`, HTTP 429 circuit breaker via `cache_settings`, `enabled=False`) are documented on **`SemanticCacheMiddleware`** in `semanticcache.middleware.adapters.fastapi` (or via the public import `semanticcache.middleware`). On shutdown, call `await cache.close()` from a lifespan handler if you want pools closed cleanly. The 429 circuit breaker is per-process; in multi-worker deployments each worker tracks its own counter independently.
 
 ### Cache behavior and tuning
 
