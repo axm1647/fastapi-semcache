@@ -17,6 +17,15 @@ class InvalidEmbeddingDimensionException(EmbeddingDimensionException):
     """Raised when an embedder reports an invalid embedding dimension."""
 
 
+class NonFiniteEmbeddingValueException(Exception):
+    """Raised when an embedding vector contains a non-finite value (nan or inf)."""
+
+    def __init__(self, *, index: int, value: float) -> None:
+        super().__init__(f"Non-finite value in embedding at index {index}: {value!r}")
+        self.index = index
+        self.value = value
+
+
 class CacheTimeoutError(TimeoutError):
     """Raised when a cache dependency call exceeds the configured timeout."""
 

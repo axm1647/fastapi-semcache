@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import re
+import math
 from typing import LiteralString, Self, cast
 
 from psycopg import sql
@@ -13,6 +14,7 @@ from psycopg.types.json import Json
 from psycopg_pool import AsyncConnectionPool
 
 from ...types import CacheEntry
+from ...exceptions import NonFiniteEmbeddingValueException
 
 _IDENTIFIER_SAFE = re.compile(r"^[a-z][a-z0-9_]{0,62}$")
 
@@ -25,8 +27,20 @@ def _vector_literal(embedding: list[float]) -> str:
 
     Returns:
         Bracketed comma-separated floats accepted by ``::vector``.
+
+    Raises:
+        NonFiniteEmbeddingValueException: If any value is non-finite (nan or inf).
     """
-    return "[" + ",".join(str(float(x)) for x in embedding) + "]"
+    parts: list[str] = []
+    for x in embedding:
+        f = float(x)
+        if not math.isfinite(f):
+            raise NonFiniteEmbeddingValueException(
+                index=embedding.index(x),
+                value=f,
+            )
+        parts.append(str(f))
+    return "[" + ",".join(parts) + "]"
 
 
 def _validate_table_name(name: str) -> str:
