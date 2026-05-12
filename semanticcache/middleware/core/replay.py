@@ -9,6 +9,10 @@ from starlette.responses import JSONResponse, Response
 
 from ...types import CacheResult
 
+_SKIP_HEADERS: frozenset[str] = frozenset(
+    {"set-cookie", "authorization", "www-authenticate", "proxy-authenticate"}
+)
+
 
 def build_hit_headers(
     *,
@@ -78,6 +82,11 @@ def cache_record_from_response(
 ) -> dict[str, object]:
     """Build a cache record with payload and response replay metadata.
 
+    Security-sensitive headers (``set-cookie``, ``authorization``,
+    ``www-authenticate``, ``proxy-authenticate``) are stripped before storage
+    so they are never persisted to Postgres or Redis and cannot be replayed to
+    unrelated clients.
+
     Args:
         payload: Parsed JSON object body from the upstream response.
         response: Upstream response to mirror on future cache hits.
@@ -92,6 +101,8 @@ def cache_record_from_response(
         if lower == "content-length":
             continue
         if lower.startswith("x-cache"):
+            continue
+        if lower in _SKIP_HEADERS:
             continue
         headers_to_store[key] = value
     return {
@@ -155,7 +166,8 @@ def response_from_cache_hit(
             headers_data = cast(dict[object, object], headers_raw)
             for key, value in headers_data.items():
                 if isinstance(key, str) and isinstance(value, str):
-                    replay_headers[key] = value
+                    if key.lower() not in _SKIP_HEADERS:
+                        replay_headers[key] = value
         headers = {**replay_headers, **hit_headers}
         return JSONResponse(
             content=body,

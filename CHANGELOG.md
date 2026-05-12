@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+
+## [Unreleased]
+
+### Fixed
+
+- **`cache_record_from_response`** / **`response_from_cache_hit`**: strip `set-cookie`, `authorization`, `www-authenticate`, and `proxy-authenticate` headers before writing a cache record so session cookies and auth tokens are never persisted to Postgres or Redis and cannot be replayed to unrelated clients. The same filter is applied at replay time as defense-in-depth for any records stored before this fix.
+
 ## [0.3.0] - 2026-05-11
 
 ### Added

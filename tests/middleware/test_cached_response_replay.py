@@ -16,6 +16,7 @@ from semanticcache.middleware.adapters.fastapi import (
     SemanticCacheMiddleware,
 )
 from semanticcache.middleware.adapters.fastapi.cache_ops import response_allows_cache_store
+from semanticcache.middleware.core.replay import cache_record_from_response
 from semanticcache.types import CacheResult
 
 
@@ -199,6 +200,34 @@ class _CorruptHitEvictionCache:
         self._stored = None
         self.entry_id += 1
         return True
+
+
+def test_cache_record_strips_sensitive_headers() -> None:
+    """Sensitive auth/cookie headers are never stored in a cache record."""
+    response = JSONResponse(
+        status_code=200,
+        content={"ok": True},
+        headers={
+            "Set-Cookie": "session=abc; HttpOnly",
+            "Authorization": "Bearer token",
+            "WWW-Authenticate": 'Bearer realm="example"',
+            "Proxy-Authenticate": "Basic",
+            "X-Safe-Header": "keep-me",
+        },
+    )
+    record = cache_record_from_response(
+        payload={"ok": True},
+        response=response,
+        cache_record_marker="__marker__",
+    )
+    meta = cast(dict[str, object], record["meta"])
+    stored_headers = cast(dict[str, str], meta["headers"])
+    lower_keys = {k.lower() for k in stored_headers}
+    assert "set-cookie" not in lower_keys
+    assert "authorization" not in lower_keys
+    assert "www-authenticate" not in lower_keys
+    assert "proxy-authenticate" not in lower_keys
+    assert any("x-safe-header" in k.lower() for k in stored_headers)
 
 
 def test_plain_json_hit_without_envelope_is_evicted_and_rewrapped_on_miss() -> None:
