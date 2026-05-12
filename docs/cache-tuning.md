@@ -181,13 +181,13 @@ tie up worker capacity. `SemanticCache` supports fail-fast timeout controls:
   timeout (null/empty env), Redis uses library defaults for those socket options.
 - **`SEMANTIC_CACHE_UPSTREAM_TIMEOUT_SECONDS`**
   (`CacheSettings.upstream_timeout_seconds`):
-  timeout budget in seconds for the upstream ASGI call when
-  `response_mode='tee'`. A slow or hung upstream in tee mode holds the
-  per-key flight lock open for its full duration, blocking all waiters for
-  that key. Setting this cap bounds how long the flight lock is held: when
-  the budget expires, the middleware cancels the upstream call, releases the
-  lock, logs a warning, and returns **HTTP 504** to the client. Defaults to
-  `None` (no cap). Has no effect in buffered mode.
+  timeout budget in seconds for the upstream ASGI call. Applies in both
+  `response_mode='buffered'` and `response_mode='tee'`. A slow or hung
+  upstream holds the per-key flight lock open for its full duration,
+  blocking all waiters for that key. Setting this cap bounds how long the
+  lock is held: when the budget expires, the middleware cancels the upstream
+  call, releases the lock (tee mode), logs a warning, and returns
+  **HTTP 504** to the client. Defaults to `None` (no cap).
 
 When `embed_timeout_seconds` or `store_timeout_seconds` are exceeded, the
 cache raises a timeout exception with operation metadata, emits a warning log

@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import asyncio
+import logging
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 
 from starlette.exceptions import HTTPException
 from starlette.responses import Response
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
+
+_logger = logging.getLogger(__name__)
 
 DEFAULT_MAX_BODY_BYTES: int = 10 * 1024 * 1024
 """Default cap (10 MiB) for request and response bodies when a limit is enabled."""
@@ -165,6 +169,7 @@ async def call_downstream(
     scope: Scope,
     body: bytes,
     max_body_bytes: int | None = DEFAULT_MAX_BODY_BYTES,
+    timeout_seconds: float | None = None,
 ) -> Response:
     """Invoke downstream ASGI app and buffer its response.
 
@@ -179,11 +184,15 @@ async def call_downstream(
         body: Full buffered request body.
         max_body_bytes: Maximum total downstream response body size; when None,
             no limit is enforced. When exceeded, returns HTTP 502 with a short body.
+        timeout_seconds: Optional cap on how long the downstream call may run.
+            When exceeded, logs a warning and returns HTTP 504. None disables
+            the cap.
 
     Returns:
         Fully-buffered Starlette ``Response`` whose ``.body`` contains the
-        complete downstream response body as ``bytes``, or HTTP 502 when the
-        buffered response exceeds ``max_body_bytes``.
+        complete downstream response body as ``bytes``, HTTP 502 when the
+        buffered response exceeds ``max_body_bytes``, or HTTP 504 when
+        ``timeout_seconds`` is exceeded.
     """
     status_code = 500
     response_headers: dict[str, str] = {}
@@ -231,7 +240,25 @@ async def call_downstream(
                 buffered_total += len(chunk)
             return
 
-    await app(scope, replay_receive, capture_send)
+    try:
+        if timeout_seconds is not None:
+            await asyncio.wait_for(
+                app(scope, replay_receive, capture_send),
+                timeout=timeout_seconds,
+            )
+        else:
+            await app(scope, replay_receive, capture_send)
+    except asyncio.TimeoutError:
+        _logger.warning(
+            "Upstream buffered call exceeded timeout_seconds=%.1f; returning 504. path=%s",
+            timeout_seconds,
+            scope.get("path", "?"),
+        )
+        return Response(
+            content=b"Gateway Timeout",
+            status_code=504,
+            media_type="text/plain",
+        )
     if response_over_limit:
         return Response(
             content=b"Bad Gateway",

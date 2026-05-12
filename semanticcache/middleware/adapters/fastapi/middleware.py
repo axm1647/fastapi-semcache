@@ -532,7 +532,11 @@ class SemanticCacheMiddleware:
                 body=b,
                 send=out_send,
                 call_downstream=lambda sc, bd: call_downstream(
-                    self.app, sc, bd, max_body_bytes=max_resp_bytes
+                    self.app,
+                    sc,
+                    bd,
+                    max_body_bytes=max_resp_bytes,
+                    timeout_seconds=self._cache_settings.upstream_timeout_seconds,
                 ),
                 send_response=send_response,
             ),
@@ -637,7 +641,13 @@ class SemanticCacheMiddleware:
                 )
                 return
 
-            response = await call_downstream(self.app, scope, body, max_body_bytes=max_resp_bytes)
+            response = await call_downstream(
+                self.app,
+                scope,
+                body,
+                max_body_bytes=max_resp_bytes,
+                timeout_seconds=self._cache_settings.upstream_timeout_seconds,
+            )
             await self._coordination.record_upstream_status_for_circuit(
                 response.status_code
             )

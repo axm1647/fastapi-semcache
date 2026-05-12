@@ -90,11 +90,11 @@ class CacheSettings(BaseSettings):
         default=None,
         gt=0.0,
         description=(
-            "Timeout budget in seconds for the upstream ASGI call when using "
-            "response_mode='tee'. When the downstream app does not complete within "
-            "this budget, the middleware cancels the call, releases the flight lock, "
-            "and returns HTTP 504 to the client. Unset (null/empty) disables the "
-            "timeout (no cap on upstream duration). Has no effect in buffered mode."
+            "Timeout budget in seconds for the upstream ASGI call. Applies in both "
+            "response_mode='buffered' and response_mode='tee'. When the downstream "
+            "app does not complete within this budget the middleware cancels the call "
+            "and returns HTTP 504 to the client. In tee mode the flight lock is also "
+            "released promptly. Unset (null/empty) disables the timeout."
         ),
     )
 

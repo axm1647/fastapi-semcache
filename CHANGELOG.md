@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`CacheSettings.upstream_timeout_seconds`** / **`SemanticCacheMiddleware`**: the upstream ASGI timeout now applies in **`response_mode='buffered'`** (via **`call_downstream`** with **`asyncio.wait_for`**) and on passthrough paths that invoke the same helper. Previously it only bounded the tee miss path, so a hung upstream in buffered mode could hold a worker indefinitely despite the setting. When the budget is exceeded the middleware cancels the downstream call, logs a warning, and returns **HTTP 504**. **`docs/cache-tuning.md`** and the setting field description now describe both modes.
 - **`cache_record_from_response`** / **`response_from_cache_hit`**: strip `set-cookie`, `authorization`, `www-authenticate`, and `proxy-authenticate` headers before writing a cache record so session cookies and auth tokens are never persisted to Postgres or Redis and cannot be replayed to unrelated clients. The same filter is applied at replay time as defense-in-depth for any records stored before this fix.
 
 ## [0.3.0] - 2026-05-11

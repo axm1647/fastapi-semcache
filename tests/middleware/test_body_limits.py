@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import override
 from unittest.mock import AsyncMock
 
@@ -157,6 +158,20 @@ async def test_call_downstream_unlimited_when_max_is_none() -> None:
     resp = await call_downstream(app, _mini_scope(), b"", max_body_bytes=None)
     assert resp.status_code == 200
     assert resp.body == b"ok"
+
+
+@pytest.mark.asyncio
+async def test_call_downstream_returns_504_when_timeout_exceeded() -> None:
+    """Return HTTP 504 when the downstream app stalls beyond timeout_seconds."""
+
+    async def hung_app(scope: Scope, receive: Receive, send: Send) -> None:
+        await asyncio.sleep(10)
+
+    resp = await call_downstream(
+        hung_app, _mini_scope(), b"", timeout_seconds=0.05
+    )
+    assert resp.status_code == 504
+    assert b"Gateway Timeout" in resp.body
 
 
 def test_middleware_request_body_limit_returns_413() -> None:
