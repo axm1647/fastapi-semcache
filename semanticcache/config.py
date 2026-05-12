@@ -108,6 +108,7 @@ class CacheSettings(BaseSettings):
             "HUGGINGFACE_API_KEY",
             "SEMANTIC_CACHE_HUGGING_FACE_API_KEY",
         ),
+        repr=False,
     )
     openai_api_key: str | None = Field(
         default=None,
@@ -124,6 +125,7 @@ class CacheSettings(BaseSettings):
             "COHERE_API_KEY",
             "SEMANTIC_CACHE_COHERE_API_KEY",
         ),
+        repr=False,
     )
     voyage_api_key: str | None = Field(
         default=None,
@@ -132,6 +134,7 @@ class CacheSettings(BaseSettings):
             "VOYAGE_API_KEY",
             "SEMANTIC_CACHE_VOYAGE_API_KEY",
         ),
+        repr=False,
     )
     voyage_embedding_model: str | None = Field(
         default=None,
@@ -162,6 +165,7 @@ class CacheSettings(BaseSettings):
             "OLLAMA_API_KEY",
             "SEMANTIC_CACHE_OLLAMA_API_KEY",
         ),
+        repr=False,
     )
     ollama_base_url: str = Field(
         default="http://127.0.0.1:11434/v1",
