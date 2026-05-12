@@ -1,6 +1,5 @@
 """Async PostgreSQL + pgvector storage for cache embeddings and payloads."""
 
-# pyright: reportAny=false
 # pyright: reportUnknownArgumentType=false
 
 from __future__ import annotations
@@ -104,7 +103,7 @@ class AsyncPgVectorStore:
         await self.close()
 
     async def ensure_schema(self) -> None:
-        """Create the cache table and HNSW index when they do not exist."""
+        """Create the cache table, indexes, and unique constraint when they do not exist."""
         if self._schema_ready:
             return
         async with self._schema_lock:
@@ -115,7 +114,8 @@ class AsyncPgVectorStore:
                 raise ValueError(msg)
             dim_lit = sql.SQL(cast(LiteralString, str(self._embedding_dim)))
             tbl = sql.Identifier(self._table_name)
-            create_table = sql.SQL("""
+            create_table = sql.SQL(
+                """
                 CREATE TABLE IF NOT EXISTS {tbl} (
                   id SERIAL PRIMARY KEY,
                   query_text TEXT NOT NULL,
@@ -125,26 +125,49 @@ class AsyncPgVectorStore:
                   scope_key TEXT NOT NULL DEFAULT '',
                   created_at TIMESTAMPTZ DEFAULT NOW()
                 )
-                """).format(tbl=tbl, dim=dim_lit)
+                """
+            ).format(tbl=tbl, dim=dim_lit)
             idx_name = sql.Identifier(f"{self._table_name}_hnsw")
-            create_idx = sql.SQL("""
+            create_idx = sql.SQL(
+                """
                 CREATE INDEX IF NOT EXISTS {idx}
                 ON {tbl}
                 USING hnsw (query_embedding vector_cosine_ops)
                 WITH (m = 16, ef_construction = 64)
-                """).format(idx=idx_name, tbl=tbl)
-            migrate_model_key = sql.SQL("""
+                """
+            ).format(idx=idx_name, tbl=tbl)
+            scope_idx_name = sql.Identifier(f"{self._table_name}_scope_model")
+            create_scope_idx = sql.SQL(
+                """
+                CREATE INDEX IF NOT EXISTS {idx}
+                ON {tbl} (scope_key, model_key)
+                """
+            ).format(idx=scope_idx_name, tbl=tbl)
+            uniq_name = sql.Identifier(f"{self._table_name}_uniq_query")
+            create_uniq = sql.SQL(
+                """
+                CREATE UNIQUE INDEX IF NOT EXISTS {idx}
+                ON {tbl} (query_text, model_key, scope_key)
+                """
+            ).format(idx=uniq_name, tbl=tbl)
+            migrate_model_key = sql.SQL(
+                """
                 ALTER TABLE {tbl}
                 ADD COLUMN IF NOT EXISTS model_key TEXT NOT NULL DEFAULT ''
-                """).format(tbl=tbl)
-            migrate_scope_key = sql.SQL("""
+                """
+            ).format(tbl=tbl)
+            migrate_scope_key = sql.SQL(
+                """
                 ALTER TABLE {tbl}
                 ADD COLUMN IF NOT EXISTS scope_key TEXT NOT NULL DEFAULT ''
-                """).format(tbl=tbl)
+                """
+            ).format(tbl=tbl)
             async with self._pool.connection() as conn:
                 async with conn.cursor() as cur:
                     await cur.execute(create_table)
                     await cur.execute(create_idx)
+                    await cur.execute(create_scope_idx)
+                    await cur.execute(create_uniq)
                     await cur.execute(migrate_model_key)
                     await cur.execute(migrate_scope_key)
             self._schema_ready = True
@@ -166,7 +189,12 @@ class AsyncPgVectorStore:
         model_key: str = "",
         scope_key: str = "",
     ) -> int:
-        """Insert a cache row with optional embedding and JSON response.
+        """Insert or update a cache row, preventing duplicates on conflict.
+
+        Uses ``ON CONFLICT (query_text, model_key, scope_key) DO UPDATE`` so
+        concurrent cache misses for the same query overwrite the stored response
+        rather than inserting duplicate rows. Requires the unique index created
+        by ``ensure_schema``.
 
         Args:
             query_text: Original query string stored for debugging or display.
@@ -178,7 +206,7 @@ class AsyncPgVectorStore:
                 global bucket when scope requirement is disabled.
 
         Returns:
-            Primary key ``id`` of the inserted row.
+            Primary key ``id`` of the inserted or updated row.
 
         Raises:
             ValueError: If ``embedding`` length does not match ``embedding_dim``.
@@ -186,11 +214,18 @@ class AsyncPgVectorStore:
         self._ensure_dim(embedding)
         vec = _vector_literal(embedding)
         tbl = sql.Identifier(self._table_name)
-        insert = sql.SQL("""
+        insert = sql.SQL(
+            """
             INSERT INTO {tbl} (query_text, query_embedding, response, model_key, scope_key)
             VALUES (%s, %s::vector, %s::jsonb, %s, %s)
+            ON CONFLICT (query_text, model_key, scope_key)
+            DO UPDATE SET
+                query_embedding = EXCLUDED.query_embedding,
+                response        = EXCLUDED.response,
+                created_at      = NOW()
             RETURNING id
-            """).format(tbl=tbl)
+            """
+        ).format(tbl=tbl)
         async with self._pool.connection() as conn:
             async with conn.cursor() as cur:
                 _ = await cur.execute(
@@ -239,9 +274,12 @@ class AsyncPgVectorStore:
     ) -> list[CacheEntry]:
         """Return up to ``limit`` rows at or above ``threshold`` by cosine similarity.
 
-        Rows are restricted in SQL so ``LIMIT`` applies only after the similarity
-        gate. Uses ``<=>`` (cosine distance); similarity is ``1 - distance``,
-        comparable to cosine similarity for normalized vectors.
+        The query vector is bound once via a CTE and reused for both the similarity
+        filter and ORDER BY, avoiding triple serialization of large embedding payloads
+        (e.g. 3072-dim OpenAI models send ~25 KB per query; the CTE reduces this to ~8 KB).
+
+        Uses ``<=>`` (cosine distance); similarity is ``1 - distance``, comparable to
+        cosine similarity for normalized vectors.
 
         Args:
             query_embedding: Query vector of length ``embedding_dim``.
@@ -265,22 +303,31 @@ class AsyncPgVectorStore:
         self._ensure_dim(query_embedding)
         vec = _vector_literal(query_embedding)
         tbl = sql.Identifier(self._table_name)
-        stmt = sql.SQL("""
-            SELECT id, query_text, response,
-                   (1 - (query_embedding <=> %s::vector)) AS similarity
-            FROM {tbl}
-            WHERE query_embedding IS NOT NULL
-              AND model_key = %s
-              AND scope_key = %s
-              AND (1 - (query_embedding <=> %s::vector)) >= %s
-            ORDER BY query_embedding <=> %s::vector
+        stmt = sql.SQL(
+            """
+            WITH q AS (SELECT %s::vector AS v)
+            SELECT t.id, t.query_text, t.response,
+                   (1 - (t.query_embedding <=> q.v)) AS similarity
+            FROM {tbl} t, q
+            WHERE t.query_embedding IS NOT NULL
+              AND t.model_key = %s
+              AND t.scope_key = %s
+              AND (1 - (t.query_embedding <=> q.v)) >= %s
+            ORDER BY t.query_embedding <=> q.v
             LIMIT %s
-            """).format(tbl=tbl)
+            """
+        ).format(tbl=tbl)
         async with self._pool.connection() as conn:
             async with conn.cursor() as cur:
                 _ = await cur.execute(
                     stmt,
-                    (vec, model_key, scope_key, vec, threshold, vec, limit),
+                    (
+                        vec,
+                        model_key,
+                        scope_key,
+                        threshold,
+                        limit,
+                    ),
                 )
                 rows = await cur.fetchall()
                 entries: list[CacheEntry] = []
