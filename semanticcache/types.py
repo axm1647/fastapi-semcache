@@ -12,6 +12,15 @@ CacheSource = Literal[
 ]
 
 
+EmbedderType = Literal[
+    "huggingface",
+    "openai",
+    "cohere",
+    "voyage",
+    "ollama",
+]
+
+
 class CacheQuery(BaseModel):
     """Request-shaped cache lookup payload (query text and optional model key)."""
 

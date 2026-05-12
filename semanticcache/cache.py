@@ -13,13 +13,22 @@ from .embedders import BaseEmbedder, get_embedder
 from .exceptions import CacheTimeoutError
 from .stores import AsyncPgVectorStore, RedisResponseStore
 from .stores.vector.storage_ids import embedding_storage_ids
-from .types import CacheResult, CacheSource
+from .types import CacheResult, CacheSource, EmbedderType
 
 if TYPE_CHECKING:
     from semanticcache.config import CacheSettings
 
 _logger = logging.getLogger(__name__)
 _T = TypeVar("_T")
+
+
+_EMBEDDER_TYPE_TO_SOURCE: dict[EmbedderType, CacheSource] = {
+    "huggingface": "embedders.sbert",
+    "openai": "embedders.openai",
+    "cohere": "embedders.cohere",
+    "voyage": "embedders.voyage",
+    "ollama": "embedders.ollama",
+}
 
 
 def _normalize_model_key(model: str | None) -> str:
@@ -109,17 +118,9 @@ def _embed_source(
     settings: "CacheSettings",
 ) -> CacheSource:
     """Map configured embedder type to ``CacheResult.source``."""
-    if settings.embedder_type == "huggingface":
-        return "embedders.sbert"
-    if settings.embedder_type == "openai":
-        return "embedders.openai"
-    if settings.embedder_type == "cohere":
-        return "embedders.cohere"
-    if settings.embedder_type == "voyage":
-        return "embedders.voyage"
-    if settings.embedder_type == "ollama":
-        return "embedders.ollama"
-    return "none"
+    _embedder_type: EmbedderType = settings.embedder_type
+
+    return _EMBEDDER_TYPE_TO_SOURCE.get(_embedder_type, "none")
 
 
 class SemanticCache:

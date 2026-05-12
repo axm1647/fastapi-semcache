@@ -10,6 +10,8 @@ from typing import ClassVar, Literal
 from pydantic import AliasChoices, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from .types import EmbedderType
+
 
 class CacheSettings(BaseSettings):
     """Load cache configuration from process environment variables only."""
@@ -101,9 +103,7 @@ class CacheSettings(BaseSettings):
         ),
     )
 
-    embedder_type: Literal["huggingface", "openai", "cohere", "voyage", "ollama"] = (
-        "huggingface"
-    )
+    embedder_type: EmbedderType = "huggingface"
     hugging_face_api_key: str | None = Field(
         default=None,
         description="Hugging Face API key",
