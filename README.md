@@ -223,6 +223,11 @@ Other advanced options (`path_prefix`, HTTP 429 circuit breaker via `cache_setti
   miss coordination: `SEMANTIC_CACHE_MIDDLEWARE_FLIGHT_LOCK_MAX_ENTRIES`
   limits retained `(query, model, scope)` lock keys and evicts least-recently-used
   unlocked entries when needed.
+- **Body size limit** (`SEMANTIC_CACHE_MAX_BODY_BYTES`, default `10_485_760` - 10 MB):
+  the middleware skips semantic caching for any request body that exceeds this limit
+  and forwards the request upstream unchanged. Set to `0` to disable the limit
+  entirely. `DEFAULT_MAX_BODY_BYTES` is exported from `semanticcache` if you need the
+  constant directly.
 
 See `docs/cache-tuning.md` for concrete tuning tips and examples.
 
