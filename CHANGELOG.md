@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`_vector_literal`**: add a guard against non-finite embedding values and raises an error when values are non-finite.
 - **`AsyncPgVectorStore.similarity_search_top_k`**: bind the query vector once via a CTE (`WITH q AS (SELECT %s::vector AS v)`) instead of three separate `%s::vector` parameters, reducing per-query wire payload ~3× for large embeddings.
 - **`AsyncPgVectorStore.upsert`**: add `ON CONFLICT (query_text, model_key, scope_key) DO UPDATE` so concurrent cache misses for the same query converge to a single row rather than accumulating duplicates; returns the existing row `id` on conflict.
 - **`AsyncPgVectorStore.ensure_schema`**: add a B-tree index on `(scope_key, model_key)` so multi-tenant similarity search prunes by tenant before ANN distance computation instead of scanning the full table; add a unique index on `(query_text, model_key, scope_key)` to back the `ON CONFLICT` clause in `upsert`.
