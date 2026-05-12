@@ -4,7 +4,7 @@ Drop-in semantic caching for FastAPI APIs and LLM endpoints.
 
 `fastapi-semcache` adds semantic response caching with minimal refactoring, using pgvector for similarity search and optional Redis for faster response lookups. It works as FastAPI middleware today and can also run as a reverse proxy in front of an upstream API or LLM service.
 
-The PyPI distribution and GitHub repository are **`fastapi-semcache`**. The import package remains **`semanticcache`**.
+The PyPI distribution and GitHub repository are **`fastapi-semcache`**. The import package remains **`semanticcache`** (**`fastapi_semcache`** is available as an alias).
 
 ## Why fastapi-semcache?
 
