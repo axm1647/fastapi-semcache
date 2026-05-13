@@ -12,6 +12,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from .types import EmbedderType
 
+_DEV_PG_URI: str = "postgresql://user:pass@localhost:5432/semanticcache"
+
 
 class CacheSettings(BaseSettings):
     """Load cache configuration from process environment variables only."""
@@ -56,7 +58,7 @@ class CacheSettings(BaseSettings):
         le=1.0,
     )
     pg_uri: str = Field(
-        "postgresql://user:pass@localhost:5432/semanticcache",
+        _DEV_PG_URI,
         description="PostgreSQL URI with pgvector extension",
         repr=False,
     )
@@ -315,6 +317,17 @@ class CacheSettings(BaseSettings):
                 ),
                 UserWarning,
                 stacklevel=1,
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _warn_dev_cred(self) -> CacheSettings:
+        if self.pg_uri == _DEV_PG_URI:
+            warnings.warn(
+                "pg_uri is set to the default dev value and should never be "
+                "used in production. Set SEMANTIC_CACHE_PG_URI.",
+                UserWarning,
+                stacklevel=2,
             )
         return self
 
