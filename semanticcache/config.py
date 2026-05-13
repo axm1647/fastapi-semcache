@@ -73,6 +73,17 @@ class CacheSettings(BaseSettings):
         3600,
         description="Default TTL for Redis-cached responses (seconds)",
     )
+    pg_ttl_days: float | None = Field(
+        default=None,
+        gt=0.0,
+        description=(
+            "Optional TTL for Postgres cache rows in days (fractional values allowed). "
+            "When set, each inserted or updated row receives an ``expires_at`` "
+            "timestamp of ``NOW() + interval``. When unset (null/empty), "
+            "``expires_at`` is NULL and rows never expire. Cleanup is the "
+            "caller's responsibility (e.g. pg_cron or an external task)."
+        ),
+    )
 
     pg_pool_size: int = 10
     pg_pool_max_overflow: int = 20

@@ -7,6 +7,7 @@ from __future__ import annotations
 import asyncio
 import re
 import math
+from datetime import datetime, timedelta, timezone
 from typing import LiteralString, Self, cast
 
 from psycopg import sql
@@ -69,6 +70,7 @@ class AsyncPgVectorStore:
     _pool: AsyncConnectionPool
     _schema_lock: asyncio.Lock
     _schema_ready: bool
+    _ttl_days: float | None
 
     def __init__(
         self,
@@ -78,6 +80,7 @@ class AsyncPgVectorStore:
         embedding_dim: int,
         min_pool_size: int = 1,
         max_pool_size: int = 10,
+        ttl_days: float | None = None,
     ) -> None:
         """Configure an async connection pool for a ``VECTOR(dim)`` cache table.
 
@@ -87,11 +90,15 @@ class AsyncPgVectorStore:
             embedding_dim: Expected embedding length; must match ``VECTOR(d)``.
             min_pool_size: Minimum connections kept in the pool.
             max_pool_size: Maximum concurrent connections.
+            ttl_days: Optional TTL in days (fractional allowed). When set, each
+                upserted row receives ``expires_at = NOW() + interval``. When
+                ``None``, ``expires_at`` is left NULL.
         """
         self._embedding_dim = embedding_dim
         self._table_name = _validate_table_name(table_name)
         self._schema_lock = asyncio.Lock()
         self._schema_ready = False
+        self._ttl_days = ttl_days
         self._pool = AsyncConnectionPool(
             conninfo=pg_uri,
             min_size=min_pool_size,
@@ -137,7 +144,8 @@ class AsyncPgVectorStore:
                   response JSONB NOT NULL,
                   model_key TEXT NOT NULL DEFAULT '',
                   scope_key TEXT NOT NULL DEFAULT '',
-                  created_at TIMESTAMPTZ DEFAULT NOW()
+                  created_at TIMESTAMPTZ DEFAULT NOW(),
+                  expires_at TIMESTAMPTZ DEFAULT NULL
                 )
                 """
             ).format(tbl=tbl, dim=dim_lit)
@@ -176,6 +184,12 @@ class AsyncPgVectorStore:
                 ADD COLUMN IF NOT EXISTS scope_key TEXT NOT NULL DEFAULT ''
                 """
             ).format(tbl=tbl)
+            migrate_expires_at = sql.SQL(
+                """
+                ALTER TABLE {tbl}
+                ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ DEFAULT NULL
+                """
+            ).format(tbl=tbl)
             async with self._pool.connection() as conn:
                 async with conn.cursor() as cur:
                     await cur.execute(create_table)
@@ -184,6 +198,7 @@ class AsyncPgVectorStore:
                     await cur.execute(create_uniq)
                     await cur.execute(migrate_model_key)
                     await cur.execute(migrate_scope_key)
+                    await cur.execute(migrate_expires_at)
             self._schema_ready = True
 
     def _ensure_dim(self, embedding: list[float]) -> None:
@@ -227,23 +242,30 @@ class AsyncPgVectorStore:
         """
         self._ensure_dim(embedding)
         vec = _vector_literal(embedding)
+        expires_at: datetime | None = (
+            datetime.now(tz=timezone.utc) + timedelta(days=self._ttl_days)
+            if self._ttl_days is not None
+            else None
+        )
         tbl = sql.Identifier(self._table_name)
         insert = sql.SQL(
             """
-            INSERT INTO {tbl} (query_text, query_embedding, response, model_key, scope_key)
-            VALUES (%s, %s::vector, %s::jsonb, %s, %s)
+            INSERT INTO {tbl} (query_text, query_embedding, response, model_key, scope_key, expires_at)
+            VALUES (%s, %s::vector, %s::jsonb, %s, %s, %s)
             ON CONFLICT (query_text, model_key, scope_key)
             DO UPDATE SET
                 query_embedding = EXCLUDED.query_embedding,
                 response        = EXCLUDED.response,
-                created_at      = NOW()
+                created_at      = NOW(),
+                expires_at      = EXCLUDED.expires_at
             RETURNING id
             """
         ).format(tbl=tbl)
         async with self._pool.connection() as conn:
             async with conn.cursor() as cur:
                 _ = await cur.execute(
-                    insert, (query_text, vec, Json(response), model_key, scope_key)
+                    insert,
+                    (query_text, vec, Json(response), model_key, scope_key, expires_at),
                 )
                 row = await cur.fetchone()
                 if row is None:

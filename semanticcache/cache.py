@@ -195,6 +195,7 @@ class SemanticCache:
             embedding_dim=self._embedding_dim,
             min_pool_size=self._settings.pg_pool_size,
             max_pool_size=max_pg,
+            ttl_days=self._settings.pg_ttl_days,
         )
         self._redis_store: RedisResponseStore | None = (
             RedisResponseStore(

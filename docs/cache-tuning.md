@@ -163,6 +163,25 @@ This is useful when you want to:
 - All thresholds are clamped to the inclusive range \[0.0, 1.0] by `CacheSettings`.
 - When `SEMANTIC_CACHE_REJECTION_THRESHOLD` is set, it must satisfy `rejection_threshold >= threshold`. Equality issues a warning because the second stage has no effect (see above).
 
+## Postgres row expiry
+
+Each cache table contains an `expires_at TIMESTAMPTZ` column (nullable). By default it is `NULL` and rows never expire.
+
+Set **`SEMANTIC_CACHE_PG_TTL_DAYS`** (`CacheSettings.pg_ttl_days`, fractional `float`) to enable expiry. When set, every inserted or updated row receives `expires_at = NOW() + <ttl_days> days`. On conflict the column is overwritten with the new expiry so upserts always refresh the deadline.
+
+Row removal is **out of scope for the library**. Schedule cleanup externally, for example with `pg_cron`:
+
+```sql
+SELECT cron.schedule(
+    'purge-expired-cache',
+    '0 * * * *',
+    $$DELETE FROM sc_<table_hash> WHERE expires_at IS NOT NULL AND expires_at < NOW()$$
+);
+```
+
+Replace `sc_<table_hash>` with the actual table name (derived from `cache_namespace` and `embedding_dim`; visible in Postgres `\dt sc_*`).
+
+
 ## Timeout tuning
 
 Slow embedder providers or storage dependencies can increase request latency and

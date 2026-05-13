@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **`CacheSettings`**: raise UserWarning when **`CacheSettings.pg_uri`** equals the default dev credentials
+- **`expires_at` column** (`AsyncPgVectorStore`): nullable `TIMESTAMPTZ` column added to every cache table. Controlled by **`SEMANTIC_CACHE_PG_TTL_DAYS`** (`CacheSettings.pg_ttl_days`, fractional float). When set, each upserted row receives `expires_at = NOW() + interval`; on conflict the deadline is refreshed. When unset (default), `expires_at` is `NULL` and rows never expire. Existing tables are migrated automatically via `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` on first start. Row deletion is out of scope; schedule cleanup externally (e.g. `pg_cron`).
 
 ## [0.3.1] - 2026-05-12
 
