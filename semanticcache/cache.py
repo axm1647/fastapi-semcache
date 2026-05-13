@@ -346,7 +346,7 @@ class SemanticCache:
             return CacheResult(is_hit=False, similarity=None, source=src, response=None)
         query_embedding = vectors[0]
         # Stage 1: fetch top-k nearest candidates using the primary threshold.
-        top_k = max(1, getattr(self._settings, "top_k_candidates", 1))
+        top_k = max(1, self._settings.top_k_candidates)
         entries = await self._with_timeout(
             operation="db_similarity_search",
             timeout_seconds=self._store_timeout_seconds,
@@ -369,7 +369,7 @@ class SemanticCache:
             return miss
 
         # Stage 2: apply optional rejection threshold to filter borderline scores.
-        rejection_threshold = getattr(self._settings, "rejection_threshold", None)
+        rejection_threshold = self._settings.rejection_threshold
         chosen_entry = None
         if rejection_threshold is not None:
             for candidate in entries:
