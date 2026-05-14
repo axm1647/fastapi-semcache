@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **`CacheSettings`**: raise UserWarning when **`CacheSettings.pg_uri`** equals the default dev credentials
 - **`expires_at` column** (`AsyncPgVectorStore`): nullable `TIMESTAMPTZ` column added to every cache table. Controlled by **`SEMANTIC_CACHE_PG_TTL_DAYS`** (`CacheSettings.pg_ttl_days`, fractional float). When set, each upserted row receives `expires_at = NOW() + interval`; on conflict the deadline is refreshed. When unset (default), `expires_at` is `NULL` and rows never expire. Existing tables are migrated automatically via `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` on first start. Row deletion is out of scope; schedule cleanup externally (e.g. `pg_cron`).
+- **Symmetric streaming on cache hits** (`SemanticCacheMiddleware`): two new `CacheSettings` fields close the asymmetry where tee-mode misses streamed chunks to the client but hits returned a single `JSONResponse`.
+  - **`hit_response_mode`** (`SEMANTIC_CACHE_HIT_RESPONSE_MODE`, `"single"` | `"stream"`): controls how cache-hit responses are delivered. `"stream"` emits the cached body as raw ASGI `http.response.body` chunks with no `content-length`, matching the framing of a tee miss. **When `response_mode="tee"` and this field is not explicitly set, it defaults to `"stream"` automatically** so hit and miss delivery are symmetric without any extra configuration. Set to `"single"` to revert to the previous `JSONResponse` path.
+  - **`hit_stream_chunk_size`** (`SEMANTIC_CACHE_HIT_STREAM_CHUNK_SIZE`, default `0`): maximum byte length of each synthetic body chunk when `hit_response_mode="stream"`. `0` sends the full body as one chunk; a positive value splits it into sequential chunks of at most that size, useful for clients that measure time-to-first-byte or process tokens incrementally.
+  - Security-sensitive headers (`set-cookie`, `authorization`, `www-authenticate`, `proxy-authenticate`) and `content-length` are always stripped from hit responses in stream mode.
 
 ## [0.3.1] - 2026-05-12
 

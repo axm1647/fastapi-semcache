@@ -1,16 +1,27 @@
 # fastapi-semcache
 
-Drop-in semantic caching for FastAPI APIs and LLM endpoints.
+Ultra-lightweight semantic caching middleware for FastAPI APIs and LLM endpoints.
 
-`fastapi-semcache` adds semantic response caching with minimal refactoring, using pgvector for similarity search and optional Redis for faster response lookups. It works as FastAPI middleware today and can also run as a reverse proxy in front of an upstream API or LLM service.
+`fastapi-semcache` adds semantic response caching as a thin async middleware layer. Vector similarity search runs inside Postgres via pgvector -- Python never owns the heavy computation. It works as FastAPI middleware today and can also run as a reverse proxy in front of an upstream API or LLM service.
 
 The PyPI distribution and GitHub repository are **`fastapi-semcache`**. The import package remains **`semanticcache`** (**`fastapi_semcache`** is available as an alias).
 
 ## Why fastapi-semcache?
 
-`fastapi-semcache` is built for Python teams who want semantic caching without rewriting their app around a larger framework.
+`fastapi-semcache` is an ultra-lightweight middleware with a minimal, honest dependency footprint. The core install adds four packages to your project: `fastapi`, `pydantic-settings`, `psycopg` (libpq C bindings), and `httpx`. No vector database service to run, no ML runtime in the hot path, no framework to build around.
 
-It is designed to plug into FastAPI with minimal refactoring, while still giving you direct control over embeddings, similarity thresholds, vector storage, and cache behavior. The default setup keeps things simple: find the highest-similarity match, apply a threshold, and return a cached response only when it is safe to do so.
+**Python is the glue, not the bottleneck.** In the request hot path, Python parses the JSON body, dispatches async I/O, and coordinates the result. That is all. Every computationally heavy operation is offloaded:
+
+| What | Where it runs |
+|------|--------------|
+| Cosine / ANN vector similarity | Postgres + pgvector (C, indexed) |
+| Embedding generation | Your provider's API (I/O, not CPU) |
+| Response blob storage and retrieval | Postgres rows or Redis (C clients) |
+| HTTP proxying | `httpx.AsyncClient` (async I/O) |
+
+Because all meaningful work is either I/O-bound (GIL released) or executing inside a C extension, Python is never the ceiling even under high concurrency with a single `uvicorn` worker. The likely bottlenecks under load are your Postgres connection pool and your embedder API, not this middleware.
+
+It plugs into FastAPI with minimal refactoring, while giving you direct control over embeddings, similarity thresholds, vector storage, and cache behavior. The default setup keeps things simple: find the highest-similarity match, apply a threshold, and return a cached response only when it is safe to do so.
 
 It supports FastAPI middleware as a first-class integration path and can also run as a reverse proxy in front of an upstream API or LLM service. Planned support for Django and Flask will extend the same integration model to other Python web stacks.
 
