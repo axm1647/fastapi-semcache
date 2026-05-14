@@ -25,6 +25,19 @@ It plugs into FastAPI with minimal refactoring, while giving you direct control 
 
 It supports FastAPI middleware as a first-class integration path and can also run as a reverse proxy in front of an upstream API or LLM service. Planned support for Django and Flask will extend the same integration model to other Python web stacks.
 
+## When not to use
+
+Semantic caching works best when a meaningful fraction of queries share similar intent within your cache window. It is not a good fit for every endpoint:
+
+- **Mostly unique queries**: creative writing, one-off analysis, ad-hoc exploration. Low hit rates mean you pay embedding cost on every request for little return.
+- **Highly personalised responses**: where the same question requires a different answer per user. Scope partitioning helps, but if every partition is unique you gain nothing.
+- **Constantly changing data**: real-time prices, live feeds, rapidly-evolving documents. Cached responses go stale faster than they help.
+- **Strict correctness requirements**: legal, medical, financial contexts where a semantically similar but not identical query may need a materially different answer.
+- **Side-effectful POST endpoints**: returning a cached response silently skips the side effect. Exclude those paths with a custom `extract_query` that returns `None`.
+- **Exact-match inputs**: if your prompts are deterministic and identical across users, a plain Redis key is simpler and cheaper than a vector search.
+
+See [docs/when-not-to-use.md](docs/when-not-to-use.md) for a fuller treatment with alternatives.
+
 ## Install
 
 ```bash
