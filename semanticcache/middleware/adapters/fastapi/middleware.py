@@ -57,6 +57,7 @@ from ...core.replay import (
     cache_record_from_response,
     merge_response_headers,
     response_from_cache_hit,
+    stream_cache_hit,
 )
 
 if TYPE_CHECKING:
@@ -503,6 +504,25 @@ class SemanticCacheMiddleware:
         ) -> None:
             await self._cache_put_with_optional_embedding(q, record, mdl, storage, embedding)
 
+        _stream_hit: (
+            Callable[[CacheResult, Send, Scope], Awaitable[bool]] | None
+        ) = None
+        if self._scope_settings.hit_response_mode == "stream":
+
+            async def _stream_hit(
+                res: CacheResult, out_send: Send, out_scope: Scope
+            ) -> bool:
+                return await stream_cache_hit(
+                    result=res,
+                    cache_record_marker=marker,
+                    cache_header_name=self._HEADER_CACHE,
+                    source_header_name=self._HEADER_SOURCE,
+                    similarity_header_name=self._HEADER_SIMILARITY,
+                    send=out_send,
+                    scope=out_scope,
+                    chunk_size=self._scope_settings.hit_stream_chunk_size,
+                )
+
         # -- end bound helpers --
 
         lookup_context = await extract_lookup_context_or_passthrough(
@@ -569,6 +589,7 @@ class SemanticCacheMiddleware:
                 raw_scope=raw_scope,
                 storage_scope_key=scope_storage,
             ),
+            stream_cache_hit=_stream_hit,
         ):
             return
 
@@ -596,6 +617,7 @@ class SemanticCacheMiddleware:
                     raw_scope=raw_scope,
                     storage_scope_key=scope_storage,
                 ),
+                stream_cache_hit=_stream_hit,
             ):
                 return
 

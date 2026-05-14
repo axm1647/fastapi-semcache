@@ -107,6 +107,7 @@ async def send_cache_hit_if_available(
     response_from_cache_hit: Callable[[CacheResult], Response | None],
     send_response: Callable[[Response, Scope, Send], Awaitable[None]],
     on_unreplayable_hit: Callable[[CacheResult], Awaitable[None]] | None = None,
+    stream_cache_hit: Callable[[CacheResult, Send, Scope], Awaitable[bool]] | None = None,
 ) -> bool:
     """Send cached response when replayable.
 
@@ -114,16 +115,45 @@ async def send_cache_hit_if_available(
         result: Cache lookup result.
         scope: Current request ASGI scope.
         send: ASGI send callable.
-        response_from_cache_hit: Cache replay builder callback.
-        send_response: Response emitter callback.
-        on_unreplayable_hit: Optional hook when ``is_hit`` is True but the payload
-            cannot be turned into a ``Response`` (for example corrupt ``body``).
+        response_from_cache_hit: Cache replay builder callback. Used when
+            ``stream_cache_hit`` is not provided.
+        send_response: Response emitter callback. Used when
+            ``stream_cache_hit`` is not provided.
+        on_unreplayable_hit: Optional hook when ``is_hit`` is True but the
+            payload cannot be replayed (for example corrupt ``body``).
+        stream_cache_hit: Optional async callable that emits the cached
+            response directly as raw ASGI messages. When provided it is called
+            instead of ``response_from_cache_hit`` + ``send_response``. Returns
+            ``True`` when the response was emitted, ``False`` when the record is
+            not replayable (triggering the same unreplayable-hit path).
 
     Returns:
         True when a cached response was sent.
     """
     if not result.is_hit:
         return False
+
+    if stream_cache_hit is not None:
+        streamed = await stream_cache_hit(result, send, scope)
+        if not streamed:
+            payload = result.response
+            detail = "response_missing"
+            if isinstance(payload, dict):
+                body_obj: object = payload.get("body")
+                detail = f"body_type={type(body_obj).__name__}"
+            _logger.warning(
+                "Semantic cache vector hit is not replayable; treating as miss. "
+                "similarity=%s source=%s cache_entry_id=%s detail=%s",
+                result.similarity,
+                result.source,
+                result.cache_entry_id,
+                detail,
+            )
+            if on_unreplayable_hit is not None:
+                await on_unreplayable_hit(result)
+            return False
+        return True
+
     cached_response = response_from_cache_hit(result)
     if cached_response is None:
         payload = result.response
