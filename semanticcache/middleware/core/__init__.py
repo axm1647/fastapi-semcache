@@ -13,6 +13,7 @@ from .replay import (
     cache_record_from_response,
     merge_response_headers,
     response_from_cache_hit,
+    stream_cache_hit,
 )
 
 __all__: list[str] = [
@@ -26,4 +27,5 @@ __all__: list[str] = [
     "trusted_extract_scope_from_server_side",
     "merge_response_headers",
     "response_from_cache_hit",
+    "stream_cache_hit",
 ]

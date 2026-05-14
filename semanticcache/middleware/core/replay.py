@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping
 from typing import cast
 
 from starlette.responses import JSONResponse, Response
+from starlette.types import Scope, Send
 
 from ...types import CacheResult
 
@@ -176,3 +178,111 @@ def response_from_cache_hit(
             media_type=media_type,
         )
     return None
+
+
+async def stream_cache_hit(
+    *,
+    result: CacheResult,
+    cache_record_marker: str,
+    cache_header_name: str,
+    source_header_name: str,
+    similarity_header_name: str,
+    send: Send,
+    scope: Scope,
+    chunk_size: int = 0,
+) -> bool:
+    """Emit a cached hit response as raw ASGI body chunks.
+
+    Sends ``http.response.start`` followed by one or more ``http.response.body``
+    messages directly to ``send``, without constructing a ``Response`` object.
+    This produces the same ASGI framing as a streaming miss response: no
+    ``content-length`` header is emitted, and ``more_body`` is ``True`` for all
+    but the final chunk.
+
+    Args:
+        result: Cache lookup output with payload and similarity metadata.
+        cache_record_marker: Marker key used to identify replayable records.
+        cache_header_name: Header key that marks hit or miss outcomes.
+        source_header_name: Header key for the cache source name.
+        similarity_header_name: Header key for similarity metadata.
+        send: ASGI send callable for the current client connection.
+        scope: Current request ASGI scope (unused at runtime but kept for
+            symmetry with other ASGI helpers and future extension).
+        chunk_size: Maximum byte length of each emitted body chunk. ``0``
+            (default) sends the full body as a single chunk. Positive values
+            split the serialised body into sequential chunks of at most this
+            many bytes, which allows clients that measure time-to-first-byte
+            or process tokens incrementally to observe progressive delivery.
+
+    Returns:
+        True when the cached response was emitted to ``send``.
+        False when the hit payload is not replayable (missing replay envelope
+        or invalid ``body``), so the caller should fall back to a miss.
+    """
+    cached_payload = result.response
+    if cached_payload is None:
+        return False
+
+    if cached_payload.get(cache_record_marker) is not True:
+        return False
+
+    body_obj: object = cached_payload.get("body")
+    if not isinstance(body_obj, dict):
+        return False
+    body = cast(dict[str, object], body_obj)
+
+    raw_meta: object = cached_payload.get("meta")
+    meta = cast(dict[str, object], raw_meta) if isinstance(raw_meta, dict) else {}
+
+    status_code_raw: object = meta.get("status_code", 200)
+    status_code = int(status_code_raw) if isinstance(status_code_raw, int) else 200
+
+    headers_raw: object = meta.get("headers")
+    replay_headers: dict[str, str] = {}
+    if isinstance(headers_raw, dict):
+        headers_data = cast(dict[object, object], headers_raw)
+        for key, value in headers_data.items():
+            if isinstance(key, str) and isinstance(value, str):
+                lower = key.lower()
+                if lower not in _SKIP_HEADERS and lower != "content-length":
+                    replay_headers[key] = value
+
+    hit_headers = build_hit_headers(
+        result=result,
+        cache_header_name=cache_header_name,
+        source_header_name=source_header_name,
+        similarity_header_name=similarity_header_name,
+    )
+    merged_headers = {**replay_headers, **hit_headers}
+
+    raw_headers: list[tuple[bytes, bytes]] = [
+        (k.encode("latin-1"), v.encode("latin-1"))
+        for k, v in merged_headers.items()
+    ]
+    await send(
+        {
+            "type": "http.response.start",
+            "status": status_code,
+            "headers": raw_headers,
+        }
+    )
+
+    body_bytes = json.dumps(body, ensure_ascii=False).encode("utf-8")
+
+    if chunk_size <= 0 or len(body_bytes) <= chunk_size:
+        await send(
+            {"type": "http.response.body", "body": body_bytes, "more_body": False}
+        )
+        return True
+
+    offset = 0
+    total = len(body_bytes)
+    while offset < total:
+        chunk = body_bytes[offset : offset + chunk_size]
+        offset += chunk_size
+        more_body = offset < total
+        await send(
+            {"type": "http.response.body", "body": chunk, "more_body": more_body}
+        )
+
+    return True
