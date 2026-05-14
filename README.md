@@ -1,8 +1,12 @@
+![PyPI - Version](https://img.shields.io/pypi/v/fastapi-semcache)
+![PyPI - Python Version](https://img.shields.io/pypi/pyversions/fastapi-semcache)
+![License](https://img.shields.io/github/license/axm1647/fastapi-semcache?color=green)
+
 # fastapi-semcache
 
 Ultra-lightweight semantic caching middleware for FastAPI APIs and LLM endpoints.
 
-`fastapi-semcache` adds semantic response caching as a thin async middleware layer. Vector similarity search runs inside Postgres via pgvector -- Python never owns the heavy computation. It works as FastAPI middleware today and can also run as a reverse proxy in front of an upstream API or LLM service.
+`fastapi-semcache` adds semantic response caching as a thin async middleware layer. Vector similarity search runs inside Postgres via pgvector. Python never owns the heavy computation. It works as FastAPI middleware today and can also run as a reverse proxy in front of an upstream API or LLM service.
 
 The PyPI distribution and GitHub repository are **`fastapi-semcache`**. The import package remains **`semanticcache`** (**`fastapi_semcache`** is available as an alias).
 
