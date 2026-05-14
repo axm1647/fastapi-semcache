@@ -193,6 +193,8 @@ Each cache table contains an `expires_at TIMESTAMPTZ` column (nullable). By defa
 
 Set **`SEMANTIC_CACHE_PG_TTL_DAYS`** (`CacheSettings.pg_ttl_days`, fractional `float`) to enable expiry. When set, every inserted or updated row receives `expires_at = NOW() + <ttl_days> days`. On conflict the column is overwritten with the new expiry so upserts always refresh the deadline.
 
+Because each embedder configuration writes to its own table (scoped by `cache_namespace` and vector dimension), autovacuum scheduling is isolated per model. A high-write model accumulates dead tuples and triggers autovacuum independently of quieter models, so a busy embedder does not delay dead-tuple cleanup for others sharing the same relation.
+
 Row removal is **out of scope for the library**. Schedule cleanup externally, for example with `pg_cron`:
 
 ```sql
