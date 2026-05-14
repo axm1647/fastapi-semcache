@@ -54,6 +54,24 @@ This is especially important for reverse-proxy deployments because upstream APIs
 
 **Response delivery on miss:** `SEMANTIC_CACHE_RESPONSE_MODE` (`CacheSettings.response_mode`) is **`buffered`** by default (full body buffered before the client sees the response). Set to **`tee`** to stream chunks to the client on cache misses while still accumulating the body for a post-stream cache write (when within size limits and validation passes). When the middleware uses **`SemanticCache.settings`** for the scope gate, **`response_mode`** is read from that same object; otherwise it comes from the middleware **`cache_settings`** source (see middleware constructor docs).
 
+**Response delivery on hit:** `SEMANTIC_CACHE_HIT_RESPONSE_MODE` (`CacheSettings.hit_response_mode`) controls how cached responses are emitted to the client. The default is **`single`**, which returns the cached body as a normal `JSONResponse` (fully backwards-compatible). Set to **`stream`** to emit the cached body as raw ASGI `http.response.body` chunks -- the same framing used by `response_mode="tee"` on a miss. This makes hit and miss delivery symmetric, which is important for LLM API clients that measure time-to-first-byte or inspect `Transfer-Encoding` to decide when to start processing tokens.
+
+When `hit_response_mode="stream"`:
+
+- No `content-length` header is set (matching streaming miss framing).
+- The body is serialised to UTF-8 JSON bytes and emitted in one or more chunks.
+- **`SEMANTIC_CACHE_HIT_STREAM_CHUNK_SIZE`** (`CacheSettings.hit_stream_chunk_size`, default `0`) controls splitting. `0` sends the entire body as a single chunk (sufficient for most clients). Set a positive integer to split the body into sequential chunks of at most that many bytes, giving clients that process tokens incrementally a progressive delivery experience.
+- Security-sensitive headers (`set-cookie`, `authorization`, `www-authenticate`, `proxy-authenticate`) and `content-length` are always stripped from the replayed headers, regardless of what was stored.
+
+Recommended combination for fully symmetric streaming:
+
+```bash
+SEMANTIC_CACHE_RESPONSE_MODE=tee
+SEMANTIC_CACHE_HIT_RESPONSE_MODE=stream
+# optional: split into small chunks (e.g. 64 bytes) for token-by-token clients
+# SEMANTIC_CACHE_HIT_STREAM_CHUNK_SIZE=64
+```
+
 ### Response shape validation
 
 Middleware stores successful responses only when the body parses as a JSON object.
