@@ -129,6 +129,104 @@ def test_tee_mode_e2e_miss_then_hit_json_response() -> None:
     assert r2.json() == {"streamed": True}
 
 
+def test_hit_stream_mode_emits_asgi_chunks_without_content_length() -> None:
+    """hit_response_mode=stream emits hit responses as raw ASGI chunks.
+
+    Verifies that a cache hit under tee + stream mode returns the correct body,
+    the X-Cache: HIT header, and no content-length (matching streaming miss
+    framing). TestClient reassembles chunked ASGI body messages transparently,
+    so body equality and status code are the primary observable assertions here.
+    """
+    fake = _StreamingFakeCache()
+    app = FastAPI()
+
+    @app.post("/v1/chat")
+    async def _chat() -> JSONResponse:
+        return JSONResponse({"streamed": True})
+
+    settings = CacheSettings(
+        response_mode="tee",
+        hit_response_mode="stream",
+        require_cache_scope=True,
+        circuit_breaker_429_enabled=False,
+    )
+    app.add_middleware(
+        SemanticCacheMiddleware,
+        cache=cast(SemanticCache, fake),
+        cache_settings=settings,
+    )
+
+    client = TestClient(app)
+    r1 = client.post("/v1/chat", json=_LLM_BODY)
+    assert r1.status_code == 200
+    assert r1.headers.get("X-Cache") == "MISS"
+    assert r1.json() == {"streamed": True}
+
+    r2 = client.post("/v1/chat", json=_LLM_BODY)
+    assert fake.put_count == 1
+    assert r2.status_code == 200
+    assert r2.headers.get("X-Cache") == "HIT"
+    assert r2.json() == {"streamed": True}
+    assert "content-length" not in {k.lower() for k in r2.headers}
+
+
+def test_hit_stream_mode_chunk_size_splits_body() -> None:
+    """hit_stream_chunk_size controls how many ASGI body messages are emitted.
+
+    We intercept the raw ASGI send callable by patching the middleware's ASGI
+    ``__call__`` path via a thin wrapper app so we can count body chunks.
+    """
+    from starlette.types import Message, Receive, Scope, Send
+
+    fake = _StreamingFakeCache()
+    inner_app = FastAPI()
+
+    @inner_app.post("/v1/chat")
+    async def _chat() -> JSONResponse:
+        return JSONResponse({"streamed": True})
+
+    settings = CacheSettings(
+        response_mode="tee",
+        hit_response_mode="stream",
+        hit_stream_chunk_size=2,
+        require_cache_scope=True,
+        circuit_breaker_429_enabled=False,
+    )
+    inner_app.add_middleware(
+        SemanticCacheMiddleware,
+        cache=cast(SemanticCache, fake),
+        cache_settings=settings,
+    )
+
+    body_messages: list[Message] = []
+
+    async def intercepting_app(scope: Scope, receive: Receive, send: Send) -> None:
+        async def recording_send(msg: Message) -> None:
+            if msg["type"] == "http.response.body":
+                body_messages.append(msg)
+            await send(msg)
+
+        await inner_app(scope, receive, recording_send)
+
+    from starlette.applications import Starlette
+    from starlette.testclient import TestClient as _TC
+
+    outer = Starlette()
+    outer.mount("/", intercepting_app)  # type: ignore[arg-type]
+    client = _TC(outer)
+
+    client.post("/v1/chat", json=_LLM_BODY)
+    body_messages.clear()
+    r2 = client.post("/v1/chat", json=_LLM_BODY)
+
+    assert r2.status_code == 200
+    assert r2.headers.get("X-Cache") == "HIT"
+    assert len(body_messages) > 1
+    for msg in body_messages[:-1]:
+        assert msg.get("more_body") is True
+    assert body_messages[-1].get("more_body") is False
+
+
 def test_tee_mode_circuit_breaker_counts_429() -> None:
     """429 responses in tee mode still advance the consecutive 429 counter."""
 
