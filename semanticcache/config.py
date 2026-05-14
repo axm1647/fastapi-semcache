@@ -260,6 +260,34 @@ class CacheSettings(BaseSettings):
             "for streaming upstreams; body is still accumulated for storage)."
         ),
     )
+    hit_response_mode: Literal["single", "stream"] = Field(
+        default="single",
+        description=(
+            "Controls how cache-hit responses are delivered to the client. "
+            '"single": The cached body is returned as a single HTTP response '
+            "(default; backwards-compatible with all response_mode values). "
+            '"stream": The cached body is emitted as one or more ASGI body chunks '
+            "over the raw send callable, matching the framing of a streaming miss "
+            "response. Use with response_mode=\"tee\" for a fully symmetric "
+            "streaming experience. Set SEMANTIC_CACHE_HIT_RESPONSE_MODE=stream "
+            "to enable."
+        ),
+    )
+    hit_stream_chunk_size: int = Field(
+        default=0,
+        ge=0,
+        description=(
+            "Maximum byte size of each synthetic body chunk when "
+            "hit_response_mode=\"stream\". "
+            "0 (default) sends the entire cached body as a single chunk with "
+            "more_body=False, which is already sufficient for most streaming "
+            "clients. Positive values split the body into multiple chunks of at "
+            "most this many bytes, which is useful for clients that measure "
+            "time-to-first-byte or process tokens incrementally. "
+            "Has no effect when hit_response_mode=\"single\". "
+            "Set SEMANTIC_CACHE_HIT_STREAM_CHUNK_SIZE to configure."
+        ),
+    )
 
     @model_validator(mode="after")
     def _validate_ollama_embedding_settings(self) -> CacheSettings:
