@@ -264,13 +264,12 @@ class CacheSettings(BaseSettings):
         default="single",
         description=(
             "Controls how cache-hit responses are delivered to the client. "
-            '"single": The cached body is returned as a single HTTP response '
-            "(default; backwards-compatible with all response_mode values). "
+            '"single": The cached body is returned as a single HTTP response. '
             '"stream": The cached body is emitted as one or more ASGI body chunks '
             "over the raw send callable, matching the framing of a streaming miss "
-            "response. Use with response_mode=\"tee\" for a fully symmetric "
-            "streaming experience. Set SEMANTIC_CACHE_HIT_RESPONSE_MODE=stream "
-            "to enable."
+            "response. When response_mode=\"tee\" and this field is not explicitly "
+            "set, it defaults to \"stream\" automatically so hit and miss delivery "
+            "are symmetric. Set SEMANTIC_CACHE_HIT_RESPONSE_MODE to override."
         ),
     )
     hit_stream_chunk_size: int = Field(
@@ -288,6 +287,25 @@ class CacheSettings(BaseSettings):
             "Set SEMANTIC_CACHE_HIT_STREAM_CHUNK_SIZE to configure."
         ),
     )
+
+    @model_validator(mode="after")
+    def _default_hit_response_mode_for_tee(self) -> CacheSettings:
+        """Set hit_response_mode to "stream" when response_mode is "tee" and unset.
+
+        When a caller opts into tee mode they expect streaming delivery. Leaving
+        hit responses in single mode creates an asymmetry where misses stream but
+        hits do not. This validator closes that gap automatically unless the caller
+        has explicitly chosen a value for hit_response_mode.
+
+        Returns:
+            Settings with hit_response_mode coerced to "stream" when appropriate.
+        """
+        if (
+            self.response_mode == "tee"
+            and "hit_response_mode" not in self.model_fields_set
+        ):
+            self.hit_response_mode = "stream"
+        return self
 
     @model_validator(mode="after")
     def _validate_ollama_embedding_settings(self) -> CacheSettings:

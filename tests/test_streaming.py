@@ -129,13 +129,30 @@ def test_tee_mode_e2e_miss_then_hit_json_response() -> None:
     assert r2.json() == {"streamed": True}
 
 
-def test_hit_stream_mode_emits_asgi_chunks_without_content_length() -> None:
-    """hit_response_mode=stream emits hit responses as raw ASGI chunks.
+def test_tee_mode_defaults_hit_response_mode_to_stream() -> None:
+    """response_mode=tee automatically sets hit_response_mode=stream when unset."""
+    settings = CacheSettings(response_mode="tee")
+    assert settings.hit_response_mode == "stream"
 
-    Verifies that a cache hit under tee + stream mode returns the correct body,
-    the X-Cache: HIT header, and no content-length (matching streaming miss
-    framing). TestClient reassembles chunked ASGI body messages transparently,
-    so body equality and status code are the primary observable assertions here.
+
+def test_buffered_mode_leaves_hit_response_mode_as_single() -> None:
+    """response_mode=buffered does not change the hit_response_mode default."""
+    settings = CacheSettings(response_mode="buffered")
+    assert settings.hit_response_mode == "single"
+
+
+def test_tee_mode_explicit_single_hit_response_mode_is_respected() -> None:
+    """Explicit hit_response_mode=single overrides the tee auto-coupling."""
+    settings = CacheSettings(response_mode="tee", hit_response_mode="single")
+    assert settings.hit_response_mode == "single"
+
+
+def test_hit_stream_mode_emits_asgi_chunks_without_content_length() -> None:
+    """tee mode auto-applies stream hit delivery; hits have no content-length.
+
+    hit_response_mode is not set explicitly -- the coupled default is exercised.
+    TestClient reassembles chunked ASGI body messages transparently, so body
+    equality and status code are the primary observable assertions here.
     """
     fake = _StreamingFakeCache()
     app = FastAPI()
@@ -146,10 +163,10 @@ def test_hit_stream_mode_emits_asgi_chunks_without_content_length() -> None:
 
     settings = CacheSettings(
         response_mode="tee",
-        hit_response_mode="stream",
         require_cache_scope=True,
         circuit_breaker_429_enabled=False,
     )
+    assert settings.hit_response_mode == "stream"
     app.add_middleware(
         SemanticCacheMiddleware,
         cache=cast(SemanticCache, fake),
