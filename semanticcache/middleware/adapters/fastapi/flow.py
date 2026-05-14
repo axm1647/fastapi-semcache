@@ -107,7 +107,9 @@ async def send_cache_hit_if_available(
     response_from_cache_hit: Callable[[CacheResult], Response | None],
     send_response: Callable[[Response, Scope, Send], Awaitable[None]],
     on_unreplayable_hit: Callable[[CacheResult], Awaitable[None]] | None = None,
-    stream_cache_hit: Callable[[CacheResult, Send, Scope], Awaitable[bool]] | None = None,
+    stream_cache_hit: (
+        Callable[[CacheResult, Send, Scope], Awaitable[bool]] | None
+    ) = None,
 ) -> bool:
     """Send cached response when replayable.
 
@@ -139,8 +141,8 @@ async def send_cache_hit_if_available(
             payload = result.response
             detail = "response_missing"
             if isinstance(payload, dict):
-                body_obj: object = payload.get("body")
-                detail = f"body_type={type(body_obj).__name__}"
+                body_obj = payload.get("body")
+                detail: str = f"body_type={type(body_obj).__name__}"
             _logger.warning(
                 "Semantic cache vector hit is not replayable; treating as miss. "
                 "similarity=%s source=%s cache_entry_id=%s detail=%s",
