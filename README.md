@@ -272,15 +272,29 @@ See `create_semantic_cache_proxy_app` in `semanticcache.proxy` for timeout, TLS 
 
 ## Streaming and chunked responses
 
-By default, `fastapi-semcache` uses a **buffered** response mode: the middleware **buffers the full downstream response** before sending it to the client and before writing to the cache. Cached hits are served as ordinary JSON bodies.
+By default, `fastapi-semcache` uses a **buffered** response mode: the middleware buffers the full downstream response before sending it to the client and before writing to the cache.
 
-When you enable `response_mode="tee"` on `CacheSettings`, cache **misses stream through to the client as chunks arrive** while a side buffer is accumulated for validation and storage. In tee mode for the FastAPI middleware:
+### Miss delivery: `response_mode`
 
-- The client sees true streaming behavior (for example token streaming or SSE) on misses.
-- The cache still stores only **fully assembled JSON object responses** after the stream completes.
-- The tee path respects the same cache-store rules as the buffered path (headers, validation, and size limits).
+Set `response_mode` on `CacheSettings` to control how cache-miss responses are delivered:
 
-For the reverse proxy (`create_semantic_cache_proxy_app`), upstream responses are currently fetched via `httpx.AsyncClient` using a buffered body, but the same `response_mode` setting controls how the proxy delivers misses to clients and writes to the cache (buffered vs tee at the ASGI layer). Cache hits today are still replayed as non-streaming JSON responses; **streaming-style cache hit replay (for example synthetic SSE)** is a planned enhancement.
+- **`"buffered"` (default)** -- full response is buffered before the client receives anything; cache write completes before the response is returned.
+- **`"tee"`** -- chunks are forwarded to the client as they arrive; the cache write runs in a background task after the stream completes. This gives lower time-to-first-byte for streaming upstreams (for example token streaming or SSE) while still accumulating the full body for storage.
+
+In both modes the cache stores only fully assembled JSON object responses. The tee path respects the same store rules as the buffered path (headers, validation, and size limits).
+
+### Hit delivery: `hit_response_mode`
+
+Set `hit_response_mode` on `CacheSettings` to control how cache-hit responses are delivered:
+
+- **`"single"` (default)** -- the cached body is returned as a single HTTP response.
+- **`"stream"`** -- the cached body is emitted as ASGI body chunks, matching the framing of a streaming miss response. When `response_mode="tee"` and `hit_response_mode` is not explicitly set, it defaults to `"stream"` automatically so hit and miss delivery are symmetric.
+
+Use `hit_stream_chunk_size` (env `SEMANTIC_CACHE_HIT_STREAM_CHUNK_SIZE`, default `0`) to split hit responses into multiple chunks of at most that many bytes. `0` sends the full body as a single chunk, which is sufficient for most clients; positive values are useful for clients that measure time-to-first-byte or process tokens incrementally.
+
+### Reverse proxy note
+
+For `create_semantic_cache_proxy_app`, upstream responses are fetched via `httpx.AsyncClient` using a buffered body, but `response_mode` and `hit_response_mode` control delivery to clients at the ASGI layer in the same way as the middleware.
 
 ## Current features
 
@@ -307,7 +321,6 @@ For the reverse proxy (`create_semantic_cache_proxy_app`), upstream responses ar
 
 ## Future support
 
-- **Streaming cache hits / synthetic SSE replay** for the middleware and proxy, so certain cached responses can be replayed in a streaming-friendly fashion rather than as a single JSON payload; see [Streaming and chunked responses](#streaming-and-chunked-responses).
 - **Django** and **Flask** middleware for in-app semantic caching (not yet shipped; same role as the FastAPI middleware).
 
 Embeddings from the following providers are planned:
