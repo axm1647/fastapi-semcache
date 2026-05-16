@@ -1,0 +1,21 @@
+site_name: fastapi-semcache
+site_url: https://fastapi-semcache.readthedocs.io
+repo_url: https://github.com/axm1647/fastapi-semcache
+theme:
+  name: material
+  palette:
+    primary: deep purple
+    accent: purple
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - content.code.copy
+
+nav:
+  - Home: index.md
+  - Cache Tuning: cache-tuning.md
+  - Embedders: embedders.md
+  - When Not to Use: when-not-to-use.md
+
+plugins:
+  - search
