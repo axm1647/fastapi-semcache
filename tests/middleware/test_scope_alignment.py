@@ -69,10 +69,11 @@ async def test_json_numeric_tenant_id_is_accepted_as_scope() -> None:
     async def _route() -> JSONResponse:
         return JSONResponse({"ok": True})
 
+    # cache_settings must agree with cache.settings to avoid ValueError.
     app.add_middleware(
         SemanticCacheMiddleware,
         cache=cache,
-        cache_settings=CacheSettings(require_cache_scope=False),
+        cache_settings=CacheSettings(require_cache_scope=True),
     )
 
     with TestClient(app) as client:
@@ -86,7 +87,7 @@ async def test_json_numeric_tenant_id_is_accepted_as_scope() -> None:
 
 @pytest.mark.asyncio
 async def test_middleware_scope_gate_follows_semantic_cache_settings() -> None:
-    """``require_cache_scope`` on ``SemanticCache.settings`` overrides ``cache_settings``."""
+    """``require_cache_scope`` on ``SemanticCache.settings`` gates requests without scope."""
     cache = _mini_semantic_cache(require_scope=False)
     mock_vs = AsyncMock()
     mock_vs.open = AsyncMock()
@@ -100,10 +101,11 @@ async def test_middleware_scope_gate_follows_semantic_cache_settings() -> None:
     async def _route() -> JSONResponse:
         return JSONResponse({"ok": True})
 
+    # cache_settings must agree with cache.settings (both require_cache_scope=False).
     app.add_middleware(
         SemanticCacheMiddleware,
         cache=cache,
-        cache_settings=CacheSettings(require_cache_scope=True),
+        cache_settings=CacheSettings(require_cache_scope=False),
     )
 
     with TestClient(app) as client:
@@ -111,3 +113,32 @@ async def test_middleware_scope_gate_follows_semantic_cache_settings() -> None:
 
     assert r.status_code == 200
     mock_vs.similarity_search_top_k.assert_awaited()
+
+
+def test_conflicting_cache_settings_raises_value_error() -> None:
+    """Mismatched ``CacheSettings`` between middleware kwarg and ``cache.settings`` raises."""
+    cache = _mini_semantic_cache(require_scope=True)
+    app = FastAPI()
+
+    with pytest.raises(ValueError, match="conflicting CacheSettings"):
+        SemanticCacheMiddleware(
+            app,
+            cache=cache,
+            cache_settings=CacheSettings(require_cache_scope=False),
+        )
+
+
+def test_conflicting_cache_authorized_requests_raises_value_error() -> None:
+    """Mismatched ``cache_authorized_requests`` between the two settings sources raises."""
+    cache = _mini_semantic_cache(require_scope=False)
+    app = FastAPI()
+
+    with pytest.raises(ValueError, match="conflicting CacheSettings"):
+        SemanticCacheMiddleware(
+            app,
+            cache=cache,
+            cache_settings=CacheSettings(
+                require_cache_scope=False,
+                cache_authorized_requests=True,
+            ),
+        )

@@ -184,8 +184,8 @@ class SemanticCacheMiddleware:
                 requests that include an ``Authorization`` header are cacheable. When
                 both ``cache_settings`` and ``cache.settings`` are provided and
                 disagree on user-facing flags (``require_cache_scope`` or
-                ``cache_authorized_requests``), a warning is logged so a likely
-                misconfiguration is visible at startup.
+                ``cache_authorized_requests``), ``ValueError`` is raised at
+                startup so the misconfiguration cannot go undetected.
             max_request_body_bytes: Maximum size of the buffered request body (default
                 ``DEFAULT_MAX_BODY_BYTES``, 10 MiB). When exceeded, the client receives
                 HTTP 413. Set to ``None`` to disable the limit (not recommended in
@@ -217,7 +217,7 @@ class SemanticCacheMiddleware:
         self._cache_settings = resolved
         cache_settings_obj = getattr(cache, "settings", None)
         if cache_settings is not None and cache_settings_obj is not None:
-            self._warn_on_settings_mismatch(
+            self._raise_on_settings_mismatch(
                 middleware_settings=cache_settings,
                 cache_settings=cache_settings_obj,
             )
@@ -238,45 +238,50 @@ class SemanticCacheMiddleware:
         self._max_response_body_bytes = max_response_body_bytes
 
     @staticmethod
-    def _warn_on_settings_mismatch(
+    def _raise_on_settings_mismatch(
         *,
         middleware_settings: CacheSettings,
         cache_settings: CacheSettings,
     ) -> None:
-        """Log a warning when split ``CacheSettings`` sources disagree.
+        """Raise ``ValueError`` when split ``CacheSettings`` sources disagree.
 
         ``SemanticCacheMiddleware`` reads ``require_cache_scope`` from
         ``cache.settings`` and ``cache_authorized_requests`` (plus the circuit
         breaker and flight-lock options) from the ``cache_settings`` kwarg.
         When both sources are supplied and disagree on user-facing flags, the
-        split is almost always a configuration mistake (for example, the
-        middleware permits caching authorized requests but the cache enforces
-        scope, or vice versa). We warn rather than raise so applications that
-        intentionally split these can still start.
+        split is always a configuration mistake that would produce inconsistent
+        security-relevant behaviour at runtime (for example, the middleware
+        permits caching authorized requests while the cache enforces scope, or
+        vice versa).
 
         Args:
             middleware_settings: ``CacheSettings`` passed via the middleware
                 ``cache_settings`` kwarg.
             cache_settings: ``CacheSettings`` exposed on the ``SemanticCache``
                 instance (``cache.settings``).
+
+        Raises:
+            ValueError: When ``require_cache_scope`` or
+                ``cache_authorized_requests`` differs between the two sources.
         """
         mismatched_fields = ("require_cache_scope", "cache_authorized_requests")
+        conflicts: list[str] = []
         for field_name in mismatched_fields:
             middleware_value = getattr(middleware_settings, field_name)
             cache_value = getattr(cache_settings, field_name)
             if middleware_value != cache_value:
-                _logger.warning(
-                    "SemanticCacheMiddleware settings mismatch: "
-                    "cache_settings.%s=%r (middleware kwarg) differs from "
-                    "cache.settings.%s=%r. cache.settings is used for the "
-                    "scope gate, while cache_settings controls the circuit "
-                    "breaker, flight lock, and Authorization gating. "
-                    "Confirm the split is intentional or align the two sources.",
-                    field_name,
-                    middleware_value,
-                    field_name,
-                    cache_value,
+                conflicts.append(
+                    f"{field_name}: cache_settings kwarg={middleware_value!r}, "
+                    f"cache.settings={cache_value!r}"
                 )
+        if conflicts:
+            raise ValueError(
+                "SemanticCacheMiddleware received conflicting CacheSettings. "
+                "Pass a single aligned CacheSettings object to both "
+                "SemanticCache and the middleware, or omit cache_settings from "
+                "the middleware so cache.settings is used exclusively.\n"
+                + "\n".join(f"  {c}" for c in conflicts)
+            )
 
     async def _cache_put_with_optional_embedding(
         self,
