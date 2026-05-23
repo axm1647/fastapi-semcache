@@ -84,7 +84,7 @@ class VoyageEmbedder(BaseEmbedder):
         Args:
             model_name: Voyage model id passed to the embeddings endpoint and to
                 ``voyageai.Client.tokenize`` for per-text token validation. Defaults
-                to ``voyage-3``.
+                to ``voyage-4``.
             dimensions: Expected embedding vector width used for storage, validation,
                 and ``cache_namespace``. Must match the model's actual output width
                 (or ``output_dimension`` when set).

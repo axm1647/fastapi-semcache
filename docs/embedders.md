@@ -174,7 +174,7 @@ pip install 'fastapi-semcache[embed-voyage]'
 
 ```python
 VoyageEmbedder(
-    model_name="voyage-3",
+    model_name="voyage-4",
     *,
     dimensions=1024,
     output_dimension=None,
@@ -183,7 +183,7 @@ VoyageEmbedder(
 )
 ```
 
-- **`model_name`**: Voyage model id. Recommended: `voyage-4-large`, `voyage-4`, `voyage-4-lite`, `voyage-3`, `voyage-3.5`, `voyage-code-3`. Defaults to `voyage-3`.
+- **`model_name`**: Voyage model id. Recommended: `voyage-4-large`, `voyage-4`, `voyage-4-lite`, `voyage-3`, `voyage-3.5`, `voyage-code-3`. Defaults to `voyage-4`.
 - **`dimensions`**: Storage and validation width. Must match the model's actual output (or `output_dimension` when set).
 - **`output_dimension`**: When set, passed as `output_dimension` in the API request. Only supported by `voyage-4-*`, `voyage-3-large`, `voyage-3.5*`, and `voyage-code-3` (valid values: 256, 512, 1024, 2048). When used, set `dimensions` to the same value.
 - **`input_type`**: Optional hint: `None`, `"query"`, or `"document"`. Use `"document"` when indexing content, `"query"` for lookup to improve retrieval accuracy. Passed directly to the API.
@@ -213,7 +213,7 @@ Set `SEMANTIC_CACHE_EMBEDDER_TYPE=voyage`. The following environment variables c
 | Variable | Default | Description |
 | --- | --- | --- |
 | `VOYAGE_API_KEY` / `SEMANTIC_CACHE_VOYAGE_API_KEY` | `None` | API key |
-| `SEMANTIC_CACHE_VOYAGE_EMBEDDING_MODEL` | `voyage-3` | Model id |
+| `SEMANTIC_CACHE_VOYAGE_EMBEDDING_MODEL` | `voyage-4` | Model id |
 | `SEMANTIC_CACHE_VOYAGE_EMBEDDING_DIMENSIONS` | `1024` | Vector width |
 | `SEMANTIC_CACHE_VOYAGE_INPUT_TYPE` | `None` | `query`, `document`, or unset |
 
