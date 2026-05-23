@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.4.1] - 2026-05-23
 
 ### Fixed
 
@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`AsyncPgVectorStore.similarity_search_top_k`**: expired rows are now excluded from similarity search results. The query now filters `(t.expires_at IS NULL OR t.expires_at > NOW())` so rows past their TTL deadline are never returned. Rows with `NULL` `expires_at` (no TTL configured) are unaffected. Previously, setting `SEMANTIC_CACHE_PG_TTL_DAYS` only controlled when rows were written with an expiry timestamp; the read path applied no expiry filter, so expired rows continued to be served until deleted externally.
 - **`SemanticCacheMiddleware` settings conflict detection**: when both `cache_settings` and `cache.settings` are supplied and disagree on `require_cache_scope` or `cache_authorized_requests`, the middleware now raises `ValueError` at construction time instead of logging a warning. Pass a single aligned `CacheSettings` to both `SemanticCache` and the middleware, or omit `cache_settings` from the middleware to use `cache.settings` exclusively.
 
-# [0.4.0] - 2026-05-14
+## [0.4.0] - 2026-05-14
 
 ### Added
 
