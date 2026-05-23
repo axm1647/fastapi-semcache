@@ -9,6 +9,7 @@ description = "Ultra-lightweight semantic caching middleware for FastAPI APIs an
 readme = "README.md"
 requires-python = ">=3.12"
 license = "Apache-2.0"
+license-files = ["LICENSE"]
 keywords = [
     "cache",
     "embedding",
@@ -20,6 +21,12 @@ keywords = [
     "semantic-cache",
     "semantic cache",
     "vector",
+    "middleware",
+    "asgi",
+    "similarity-search",
+    "llm-cache",
+    "openai-cache",
+    "cost-reduction",
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -29,6 +36,10 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "Topic :: Software Development :: Libraries :: Python Modules",
+    "Framework :: FastAPI",
+    "Operating System :: OS Independent",
+    "Typing :: Typed",
+    "Topic :: Internet :: WWW/HTTP :: WSGI :: Middleware",
 ]
 dependencies = [
     "fastapi>=0.136.1",
@@ -55,6 +66,8 @@ test = [
 Homepage = "https://github.com/axm1647/fastapi-semcache"
 Repository = "https://github.com/axm1647/fastapi-semcache"
 Issues = "https://github.com/axm1647/fastapi-semcache/issues"
+Documentation = "https://fastapi-semcache.readthedocs.io/en/latest"
+Changelog = "https://github.com/axm1647/fastapi-semcache/releases"
 
 [tool.setuptools]
 py-modules = ["fastapi_semcache"]
