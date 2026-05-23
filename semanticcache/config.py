@@ -133,6 +133,7 @@ class CacheSettings(BaseSettings):
             "OPENAI_API_KEY",
             "SEMANTIC_CACHE_OPENAI_API_KEY",
         ),
+        repr=False,
     )
     cohere_api_key: str | None = Field(
         default=None,
