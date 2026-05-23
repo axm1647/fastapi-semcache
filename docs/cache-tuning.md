@@ -184,7 +184,7 @@ This is useful when you want to:
 ### Notes
 
 - If `SEMANTIC_CACHE_TOP_K_CANDIDATES` is less than `1`, it is treated as `1` internally.
-- All thresholds are clamped to the inclusive range \[0.0, 1.0] by `CacheSettings`.
+- All thresholds are validated to the inclusive range \[0.0, 1.0] by `CacheSettings` (out-of-range values raise a validation error).
 - When `SEMANTIC_CACHE_REJECTION_THRESHOLD` is set, it must satisfy `rejection_threshold >= threshold`. Equality issues a warning because the second stage has no effect (see above).
 
 ## Postgres row expiry
@@ -231,7 +231,7 @@ tie up worker capacity. `SemanticCache` supports fail-fast timeout controls:
   upstream holds the per-key flight lock open for its full duration,
   blocking all waiters for that key. Setting this cap bounds how long the
   lock is held: when the budget expires, the middleware cancels the upstream
-  call, releases the lock (tee mode), logs a warning, and returns
+  call, releases the flight lock, logs a warning, and returns
   **HTTP 504** to the client. Defaults to `None` (no cap).
 
 When `embed_timeout_seconds` or `store_timeout_seconds` are exceeded, the
@@ -243,7 +243,9 @@ fail open, so requests still execute against upstream handlers.
 ## Middleware in-flight lock registry
 
 `SemanticCacheMiddleware` keeps an in-memory lock table to serialize concurrent
-cache misses for the same `(method + normalized path + model + semantic query, scope)` key. To prevent unbounded growth in
+cache misses for the same `(composed_query, model, scope_storage)` key, where
+`composed_query` is the string produced by combining HTTP method, normalized path,
+model value, and extracted semantic query. To prevent unbounded growth in
 long-lived processes with high key cardinality, configure:
 
 - **`SEMANTIC_CACHE_MIDDLEWARE_FLIGHT_LOCK_MAX_ENTRIES`**
@@ -254,8 +256,9 @@ long-lived processes with high key cardinality, configure:
 
 Default is `4096`. **Saturated registry:** when every older retained lock is
 still held and a new distinct key is inserted, LRU eviction drops that new key’s
-table entry immediately (the new lock is the first unlocked slot in traversal
-order). The caller still holds the same lock object, but it is no longer tracked,
-so concurrent identical keys are not deduplicated until capacity frees. A
+table entry immediately (the new lock is the last unlocked slot in traversal
+order, since it was just appended and all older entries are still held). The
+caller still holds the same lock object, but it is no longer tracked, so
+concurrent identical keys are not deduplicated until capacity frees. A
 critical-level log is emitted when this happens.
 
