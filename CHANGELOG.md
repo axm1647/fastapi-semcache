@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **Flight lock registry cleanup** (`MiddlewareCoordination`): registry entries are now removed as soon as the flight completes. Previously, entries accumulated indefinitely and LRU eviction only triggered when the registry reached `middleware_flight_lock_max_entries` (default 4096), allowing stale locks from long-completed requests to occupy all slots. `get_flight_lock` now returns a `_FlightLock` context manager that removes the registry entry in `__aexit__` once the inner lock is released, so `_flight_locks` only holds genuinely in-flight keys at any point in time.
+
 # [0.4.0] - 2026-05-14
 
 ### Added
