@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **Flight lock registry cleanup** (`MiddlewareCoordination`): registry entries are now removed as soon as the flight completes. Previously, entries accumulated indefinitely and LRU eviction only triggered when the registry reached `middleware_flight_lock_max_entries` (default 4096), allowing stale locks from long-completed requests to occupy all slots. `get_flight_lock` now returns a `_FlightLock` context manager that removes the registry entry in `__aexit__` once the inner lock is released, so `_flight_locks` only holds genuinely in-flight keys at any point in time.
+- **`AsyncPgVectorStore.similarity_search_top_k`**: expired rows are now excluded from similarity search results. The query now filters `(t.expires_at IS NULL OR t.expires_at > NOW())` so rows past their TTL deadline are never returned. Rows with `NULL` `expires_at` (no TTL configured) are unaffected. Previously, setting `SEMANTIC_CACHE_PG_TTL_DAYS` only controlled when rows were written with an expiry timestamp; the read path applied no expiry filter, so expired rows continued to be served until deleted externally.
 
 # [0.4.0] - 2026-05-14
 

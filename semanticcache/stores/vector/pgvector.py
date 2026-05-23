@@ -329,6 +329,8 @@ class AsyncPgVectorStore:
 
         Returns:
             List of ``CacheEntry`` objects ordered from highest to lowest similarity.
+            Rows whose ``expires_at`` is in the past are excluded; rows with a
+            ``NULL`` ``expires_at`` are treated as non-expiring.
             The list is empty on miss.
 
         Raises:
@@ -349,6 +351,7 @@ class AsyncPgVectorStore:
               AND t.model_key = %s
               AND t.scope_key = %s
               AND (1 - (t.query_embedding <=> q.v)) >= %s
+              AND (t.expires_at IS NULL OR t.expires_at > NOW())
             ORDER BY t.query_embedding <=> q.v
             LIMIT %s
             """
