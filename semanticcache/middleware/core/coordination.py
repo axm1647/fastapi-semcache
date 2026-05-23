@@ -6,8 +6,60 @@ import asyncio
 import logging
 import time
 from collections import OrderedDict
+from types import TracebackType
 
 _logger = logging.getLogger(__name__)
+
+
+class _FlightLock:
+    """Async context manager that acquires a lock and removes it from the registry on exit.
+
+    Attributes:
+        _lock: Underlying asyncio lock.
+        _key: Registry key tuple for this flight.
+        _registry: Shared flight-lock ordered dict.
+        _registry_guard: Mutex protecting the registry.
+    """
+
+    __slots__ = ("_lock", "_key", "_registry", "_registry_guard")
+
+    def __init__(
+        self,
+        lock: asyncio.Lock,
+        key: tuple[str, str | None, str],
+        registry: OrderedDict[tuple[str, str | None, str], asyncio.Lock],
+        registry_guard: asyncio.Lock,
+    ) -> None:
+        """Store the lock and its registry coordinates.
+
+        Args:
+            lock: Underlying asyncio lock for this flight key.
+            key: Registry key tuple ``(query, model, scope_storage)``.
+            registry: Shared flight-lock ordered dict to clean up from.
+            registry_guard: Mutex that protects the registry dict.
+        """
+        self._lock = lock
+        self._key = key
+        self._registry = registry
+        self._registry_guard = registry_guard
+
+    async def __aenter__(self) -> "_FlightLock":
+        """Acquire the underlying lock."""
+        await self._lock.acquire()
+        return self
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> None:
+        """Release the lock and remove the registry entry."""
+        self._lock.release()
+        async with self._registry_guard:
+            registered = self._registry.get(self._key)
+            if registered is self._lock and not self._lock.locked():
+                self._registry.pop(self._key, None)
 
 
 class MiddlewareCoordination:
@@ -60,8 +112,12 @@ class MiddlewareCoordination:
         query: str,
         model: str | None,
         scope_storage: str,
-    ) -> asyncio.Lock:
-        """Return lock that serializes miss handling for one cache key.
+    ) -> _FlightLock:
+        """Return context manager that serializes miss handling for one cache key.
+
+        Acquiring the returned context manager locks the underlying
+        ``asyncio.Lock``; releasing it removes the registry entry so the slot
+        is available for new keys immediately after the flight completes.
 
         Args:
             query: Extracted cache key text.
@@ -69,9 +125,9 @@ class MiddlewareCoordination:
             scope_storage: Resolved storage scope string.
 
         Returns:
-            Async lock for this `(query, model, scope)` tuple. When the
+            ``_FlightLock`` for this ``(query, model, scope)`` tuple. When the
             registry is at capacity and every retained lock is held, returns a
-            lock that is not registered; concurrent requests for the same key
+            wrapper that is not registered; concurrent requests for the same key
             may then miss deduplication until capacity frees up.
         """
         key = (query, model, scope_storage)
@@ -79,7 +135,7 @@ class MiddlewareCoordination:
             lock = self._flight_locks.get(key)
             if lock is not None:
                 self._flight_locks.move_to_end(key)
-                return lock
+                return _FlightLock(lock, key, self._flight_locks, self._flight_lock_registry)
             lock = asyncio.Lock()
             self._flight_locks[key] = lock
             self._evict_unused_flight_locks()
@@ -91,7 +147,7 @@ class MiddlewareCoordination:
                     "may duplicate upstream work until capacity frees.",
                     self._flight_lock_max_entries,
                 )
-            return lock
+            return _FlightLock(lock, key, self._flight_locks, self._flight_lock_registry)
 
     async def upstream_blocked_by_circuit(self) -> bool:
         """Return True when 429 circuit is open and upstream must not be called.

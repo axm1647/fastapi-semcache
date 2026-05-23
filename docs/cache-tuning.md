@@ -245,20 +245,27 @@ fail open, so requests still execute against upstream handlers.
 `SemanticCacheMiddleware` keeps an in-memory lock table to serialize concurrent
 cache misses for the same `(composed_query, model, scope_storage)` key, where
 `composed_query` is the string produced by combining HTTP method, normalized path,
-model value, and extracted semantic query. To prevent unbounded growth in
-long-lived processes with high key cardinality, configure:
+model value, and extracted semantic query.
+
+Each registry entry is removed automatically when the flight completes (i.e. when
+the `async with flight:` block exits), so the registry only contains genuinely
+in-flight keys at any point in time. Under normal operation the registry stays
+small regardless of key cardinality.
+
+To guard against pathological cases (e.g. many concurrent in-flight misses that
+never complete), the registry is bounded:
 
 - **`SEMANTIC_CACHE_MIDDLEWARE_FLIGHT_LOCK_MAX_ENTRIES`**
   (`CacheSettings.middleware_flight_lock_max_entries`):
-  maximum number of distinct in-flight lock keys retained. When the limit is
-  exceeded, the middleware evicts least-recently-used **unlocked** lock entries.
-  Locks currently coordinating active requests are never evicted.
+  maximum number of distinct in-flight lock keys retained simultaneously. When the
+  limit is exceeded, the middleware evicts least-recently-used **unlocked** lock
+  entries. Locks currently coordinating active requests are never evicted.
 
-Default is `4096`. **Saturated registry:** when every older retained lock is
-still held and a new distinct key is inserted, LRU eviction drops that new key’s
-table entry immediately (the new lock is the last unlocked slot in traversal
-order, since it was just appended and all older entries are still held). The
-caller still holds the same lock object, but it is no longer tracked, so
-concurrent identical keys are not deduplicated until capacity frees. A
-critical-level log is emitted when this happens.
+Default is `4096`. **Saturated registry:** when every retained lock is held and a
+new distinct key is inserted, LRU eviction drops that new key’s table entry
+immediately (the new lock is the last unlocked slot in traversal order, since it
+was just appended and all older entries are still held). The caller still holds the
+same lock object, but it is no longer tracked, so concurrent identical keys are not
+deduplicated until capacity frees. A critical-level log is emitted when this
+happens.
 

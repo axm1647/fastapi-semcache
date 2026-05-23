@@ -74,12 +74,12 @@ async def test_get_flight_lock_skips_eviction_for_locked_entries() -> None:
     middleware = _make_middleware(max_entries=2)
 
     held = await middleware._coordination.get_flight_lock("q1", "m", "")
-    await held.acquire()
+    await held._lock.acquire()
     try:
         _ = await middleware._coordination.get_flight_lock("q2", "m", "")
         _ = await middleware._coordination.get_flight_lock("q3", "m", "")
     finally:
-        held.release()
+        held._lock.release()
 
     assert len(middleware._coordination._flight_locks) == 2
     assert ("q1", "m", "") in middleware._coordination._flight_locks
@@ -93,15 +93,71 @@ async def test_get_flight_lock_hard_cap_uncoordinated_when_registry_full() -> No
     middleware = _make_middleware(max_entries=1)
 
     held = await middleware._coordination.get_flight_lock("q1", "m", "")
-    await held.acquire()
+    await held._lock.acquire()
     try:
         with patch("semanticcache.middleware.core.coordination._logger.critical") as (
             mock_critical
         ):
             ephemeral = await middleware._coordination.get_flight_lock("q2", "m", "")
         assert len(middleware._coordination._flight_locks) == 1
-        assert ephemeral is not held
+        assert ephemeral._lock is not held._lock
         assert ("q2", "m", "") not in middleware._coordination._flight_locks
         mock_critical.assert_called_once()
     finally:
-        held.release()
+        held._lock.release()
+
+
+@pytest.mark.asyncio
+async def test_flight_lock_removed_from_registry_after_exit() -> None:
+    """Registry entry is removed once the flight context manager exits."""
+    middleware = _make_middleware(max_entries=4)
+
+    flight = await middleware._coordination.get_flight_lock("q1", "m", "")
+    assert ("q1", "m", "") in middleware._coordination._flight_locks
+
+    async with flight:
+        assert ("q1", "m", "") in middleware._coordination._flight_locks
+
+    assert ("q1", "m", "") not in middleware._coordination._flight_locks
+
+
+@pytest.mark.asyncio
+async def test_flight_lock_registry_does_not_accumulate_stale_entries() -> None:
+    """Completed flights are removed so the registry stays small."""
+    middleware = _make_middleware(max_entries=4)
+
+    for i in range(10):
+        flight = await middleware._coordination.get_flight_lock(f"q{i}", "m", "")
+        async with flight:
+            pass
+
+    assert len(middleware._coordination._flight_locks) == 0
+
+
+@pytest.mark.asyncio
+async def test_flight_lock_shared_lock_not_removed_while_second_waiter_holds() -> None:
+    """Registry entry persists while a second waiter still holds the lock."""
+    import asyncio
+
+    middleware = _make_middleware(max_entries=4)
+
+    # First caller: get the flight lock and acquire it.
+    flight1 = await middleware._coordination.get_flight_lock("q1", "m", "")
+    await flight1._lock.acquire()
+
+    # Second caller: gets the same registered lock (same key).
+    flight2 = await middleware._coordination.get_flight_lock("q1", "m", "")
+    assert flight1._lock is flight2._lock
+
+    # First caller releases; lock transitions to flight2's acquire.
+    acquire_task = asyncio.create_task(flight2._lock.acquire())
+    flight1._lock.release()
+    await acquire_task
+
+    # Key should still be registered because flight2 is holding the lock.
+    assert ("q1", "m", "") in middleware._coordination._flight_locks
+
+    # Clean up.
+    flight2._lock.release()
+    async with middleware._coordination._flight_lock_registry:
+        middleware._coordination._flight_locks.pop(("q1", "m", ""), None)
