@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **`CacheSettings.openai_api_key`**: set repr=False to prevent API keys being leaked in .
 - **`docker/compose.yml`**: hardcoded `user`/`pass` credentials replaced with `${POSTGRES_USER}` / `${POSTGRES_PASSWORD}` host-environment variables (compose fails fast if either is unset). Postgres and Redis port bindings restricted to `127.0.0.1` so they are not reachable from outside the host.
+- **`stream_tee_and_store` upstream timeout in tee mode** (C3): on `asyncio.TimeoutError`, the function previously returned `504` to the middleware caller without ever calling `send`, leaving clients hanging indefinitely when the upstream had not yet sent `http.response.start`. `TeeSend` now tracks `response_start_sent`. The timeout handler distinguishes two cases: (1) before `http.response.start` -- a complete 504 response is emitted via `send` before releasing the flight lock; (2) mid-stream (headers already committed) -- a terminal empty body chunk is sent to close the connection cleanly and a warning is logged. Test `test_stream_tee_and_store_upstream_timeout_returns_504` was split into two tests that assert the messages actually received by `send` rather than just the return value. `docs/cache-tuning.md` documents the two-phase behaviour and advises setting `upstream_timeout_seconds` above expected time-to-first-byte to avoid mid-stream truncations.
 
 ## [0.4.1] - 2026-05-23
 

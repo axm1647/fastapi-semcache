@@ -176,8 +176,8 @@ async def test_stream_tee_and_store_over_limit_skips_cache_put() -> None:
 
 
 @pytest.mark.asyncio
-async def test_stream_tee_and_store_upstream_timeout_returns_504() -> None:
-    """When upstream exceeds the timeout budget, 504 is returned and cache_put is skipped."""
+async def test_stream_tee_and_store_upstream_timeout_sends_504_before_response_start() -> None:
+    """When timeout fires before response.start, a 504 is sent to the client."""
 
     async def hung_app(scope: Scope, receive: Receive, send: Send) -> None:
         await asyncio.sleep(10)
@@ -202,14 +202,16 @@ async def test_stream_tee_and_store_upstream_timeout_returns_504() -> None:
     ) -> bool:
         return True
 
-    async def noop_send(message: Message) -> None:
-        pass
+    received_messages: list[Message] = []
+
+    async def capturing_send(message: Message) -> None:
+        received_messages.append(message)
 
     status = await stream_tee_and_store(
         app=hung_app,
         scope=scope,
         body=b"{}",
-        send=noop_send,
+        send=capturing_send,
         lookup_ctx=lookup,
         request=request,
         query_embedding=None,
@@ -224,3 +226,80 @@ async def test_stream_tee_and_store_upstream_timeout_returns_504() -> None:
 
     assert status == 504
     cache_put.assert_not_awaited()
+
+    start_messages = [m for m in received_messages if m["type"] == "http.response.start"]
+    body_messages = [m for m in received_messages if m["type"] == "http.response.body"]
+    assert len(start_messages) == 1, "client must receive exactly one response.start"
+    assert start_messages[0]["status"] == 504
+    assert len(body_messages) >= 1, "client must receive at least one response.body"
+    assert not body_messages[-1].get("more_body", False), "final body chunk must close the stream"
+
+
+@pytest.mark.asyncio
+async def test_stream_tee_and_store_upstream_timeout_mid_stream_closes_connection() -> None:
+    """When timeout fires after response.start, the connection is closed cleanly."""
+    started = asyncio.Event()
+
+    async def partial_app(scope: Scope, receive: Receive, send: Send) -> None:
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 200,
+                "headers": [(b"content-type", b"application/json")],
+            }
+        )
+        await send({"type": "http.response.body", "body": b'{"part":', "more_body": True})
+        started.set()
+        await asyncio.sleep(10)
+
+    cache_put = AsyncMock()
+    scope = _scope()
+    request = Request(scope)
+    lookup = LookupContext(
+        query="q",
+        model=None,
+        raw_scope="t",
+        scope_storage="t",
+    )
+
+    async def shape_ok(
+        req: Request,
+        req_body: bytes,
+        resp: object,
+        payload: dict[str, object],
+        model: str | None,
+        raw_scope: str | None,
+    ) -> bool:
+        return True
+
+    received_messages: list[Message] = []
+
+    async def capturing_send(message: Message) -> None:
+        received_messages.append(message)
+
+    status = await stream_tee_and_store(
+        app=partial_app,
+        scope=scope,
+        body=b"{}",
+        send=capturing_send,
+        lookup_ctx=lookup,
+        request=request,
+        query_embedding=None,
+        max_body_bytes=None,
+        upstream_timeout_seconds=0.2,
+        miss_headers={},
+        response_allows_cache_store=lambda r: True,
+        response_shape_allows_cache_store=shape_ok,
+        cache_record_from_response=lambda p, r: p,
+        cache_put=cache_put,
+    )
+
+    assert status == 504
+    cache_put.assert_not_awaited()
+
+    start_messages = [m for m in received_messages if m["type"] == "http.response.start"]
+    body_messages = [m for m in received_messages if m["type"] == "http.response.body"]
+    assert len(start_messages) == 1
+    assert start_messages[0]["status"] == 200, "original status was already committed"
+    assert len(body_messages) >= 1
+    assert not body_messages[-1].get("more_body", False), "final body chunk must close the stream"

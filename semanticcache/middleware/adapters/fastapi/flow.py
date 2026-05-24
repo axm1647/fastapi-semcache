@@ -450,9 +450,16 @@ async def stream_tee_and_store(
     cache storage is skipped.
 
     When ``upstream_timeout_seconds`` is set and the downstream app does not
-    complete within that budget, ``asyncio.TimeoutError`` is caught, a 504
-    status is returned, and the flight lock is released promptly rather than
-    being held for the full stall duration.
+    complete within that budget, ``asyncio.TimeoutError`` is caught and handled
+    in two ways depending on how far the stream progressed:
+
+    - **Before ``http.response.start``**: a complete 504 response is sent to
+      the client via ``send`` before returning 504, so the client is not left
+      hanging.
+    - **After ``http.response.start``** (mid-stream): the HTTP status line has
+      already been committed; a terminal ``http.response.body`` chunk is sent
+      to close the connection cleanly, then 504 is returned so the flight lock
+      is released promptly.
 
     Args:
         app: Downstream ASGI application.
@@ -501,12 +508,51 @@ async def stream_tee_and_store(
         else:
             await app(scope, replay_receive, tee)
     except asyncio.TimeoutError:
-        _logger.warning(
-            "Upstream tee call exceeded upstream_timeout_seconds=%.1f; "
-            "releasing flight lock. path=%s",
-            upstream_timeout_seconds,
-            scope.get("path", "?"),
-        )
+        path = scope.get("path", "?")
+        if not tee.response_start_sent:
+            _logger.warning(
+                "Upstream tee call exceeded upstream_timeout_seconds=%.1f before "
+                "response.start; sending 504 to client. path=%s",
+                upstream_timeout_seconds,
+                path,
+            )
+            await send(
+                {
+                    "type": "http.response.start",
+                    "status": 504,
+                    "headers": [
+                        (b"content-type", b"text/plain; charset=utf-8"),
+                        (b"content-length", b"19"),
+                    ],
+                }
+            )
+            await send(
+                {
+                    "type": "http.response.body",
+                    "body": b"upstream timed out\n",
+                    "more_body": False,
+                }
+            )
+        else:
+            _logger.warning(
+                "Upstream tee call exceeded upstream_timeout_seconds=%.1f mid-stream; "
+                "aborting connection. Partial response already sent. path=%s",
+                upstream_timeout_seconds,
+                path,
+            )
+            try:
+                await send(
+                    {
+                        "type": "http.response.body",
+                        "body": b"",
+                        "more_body": False,
+                    }
+                )
+            except Exception:
+                _logger.debug(
+                    "Failed to send terminal body chunk after mid-stream timeout. path=%s",
+                    path,
+                )
         return 504
 
     if tee.over_limit:

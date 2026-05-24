@@ -35,6 +35,9 @@ class TeeSend:
         status_code: Populated from the first ``http.response.start`` message.
         headers: Response headers from ``http.response.start`` (latin-1 decoded).
         over_limit: True when buffering was stopped due to ``max_body_bytes``.
+        response_start_sent: True once ``http.response.start`` has been forwarded
+            to the real send callable. Used by callers to distinguish "timeout
+            before any bytes were sent" from "timeout mid-stream".
 
     Example:
         After ``await app(scope, replay_receive, tee)``, inspect ``tee.body``,
@@ -51,6 +54,7 @@ class TeeSend:
     _body_chunks: list[bytes] = field(default_factory=list, init=False)
     _buffered_total: int = field(default=0, init=False)
     over_limit: bool = field(default=False, init=False)
+    response_start_sent: bool = field(default=False, init=False)
 
     async def __call__(self, message: Message) -> None:
         """Forward ``message`` to ``real_send`` and update tee state.
@@ -76,6 +80,7 @@ class TeeSend:
             out_message = dict(message)
             out_message["headers"] = combined
             await self.real_send(out_message)
+            self.response_start_sent = True
             return
 
         if msg_type == "http.response.body":

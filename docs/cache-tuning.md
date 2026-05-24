@@ -234,6 +234,18 @@ tie up worker capacity. `SemanticCache` supports fail-fast timeout controls:
   call, releases the flight lock, logs a warning, and returns
   **HTTP 504** to the client. Defaults to `None` (no cap).
 
+  In `tee` mode the timeout is handled in two ways depending on how far the
+  stream has progressed. If the upstream has not yet sent `http.response.start`,
+  the middleware sends a complete 504 response to the client before releasing
+  the lock, so the client never hangs. If `http.response.start` has already
+  been forwarded (mid-stream), the HTTP status line is already committed; the
+  middleware closes the connection by sending a terminal empty body chunk, then
+  releases the lock. Because the original (non-504) status line has already
+  been sent, the client receives a truncated stream in this case. To avoid
+  mid-stream timeouts, set `upstream_timeout_seconds` to a value larger than
+  the expected time-to-first-byte so that the timeout only fires for fully
+  hung upstreams that have not yet responded at all.
+
 When `embed_timeout_seconds` or `store_timeout_seconds` are exceeded, the
 cache raises a timeout exception with operation metadata, emits a warning log
 entry, and increments an in-process operation timeout counter
