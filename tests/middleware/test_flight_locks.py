@@ -95,14 +95,14 @@ async def test_get_flight_lock_hard_cap_uncoordinated_when_registry_full() -> No
     held = await middleware._coordination.get_flight_lock("q1", "m", "")
     await held._lock.acquire()
     try:
-        with patch("semanticcache.middleware.core.coordination._logger.critical") as (
-            mock_critical
+        with patch("semanticcache.middleware.core.coordination._logger.warning") as (
+            mock_warning
         ):
             ephemeral = await middleware._coordination.get_flight_lock("q2", "m", "")
         assert len(middleware._coordination._flight_locks) == 1
         assert ephemeral._lock is not held._lock
         assert ("q2", "m", "") not in middleware._coordination._flight_locks
-        mock_critical.assert_called_once()
+        mock_warning.assert_called_once()
     finally:
         held._lock.release()
 

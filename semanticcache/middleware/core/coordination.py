@@ -140,7 +140,7 @@ class MiddlewareCoordination:
             self._flight_locks[key] = lock
             self._evict_unused_flight_locks()
             if key not in self._flight_locks:
-                _logger.critical(
+                _logger.warning(
                     "Flight lock registry is full (%d distinct keys); this key was "
                     "evicted immediately because every retained lock was held. "
                     "Serving without registry coordination; concurrent identical keys "

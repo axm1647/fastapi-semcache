@@ -278,6 +278,6 @@ new distinct key is inserted, LRU eviction drops that new key’s table entry
 immediately (the new lock is the last unlocked slot in traversal order, since it
 was just appended and all older entries are still held). The caller still holds the
 same lock object, but it is no longer tracked, so concurrent identical keys are not
-deduplicated until capacity frees. A critical-level log is emitted when this
+deduplicated until capacity frees. A warning-level log is emitted when this
 happens.
 
