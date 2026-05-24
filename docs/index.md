@@ -160,7 +160,7 @@ app.add_middleware(YourAuthMiddleware)
 |---|---|---|
 | `SEMANTIC_CACHE_PG_URI` | _(required)_ | PostgreSQL connection string |
 | `SEMANTIC_CACHE_EMBEDDER_TYPE` | `huggingface` | Embedder backend (`openai`, `voyage`, `huggingface`, `ollama`) |
-| `SEMANTIC_CACHE_THRESHOLD` | `0.90` | Primary cosine similarity gate \[0.0, 1.0] |
+| `SEMANTIC_CACHE_THRESHOLD` | `0.95` | Primary cosine similarity gate \[0.0, 1.0] |
 | `SEMANTIC_CACHE_TOP_K_CANDIDATES` | `1` | Max nearest-neighbor candidates from pgvector |
 | `SEMANTIC_CACHE_REJECTION_THRESHOLD` | _(unset)_ | Optional stricter second-stage cutoff |
 | `SEMANTIC_CACHE_REDIS_URI` | _(empty)_ | Redis URI; omit for Postgres-only mode |

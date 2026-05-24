@@ -37,7 +37,7 @@ class CacheSettings(BaseSettings):
     )
 
     threshold: float = Field(
-        0.90,
+        0.95,
         description="Primary similarity threshold for candidate inclusion (0.0-1.0).",
         ge=0.0,  # guard boundaries
         le=1.0,
