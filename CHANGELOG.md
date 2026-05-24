@@ -7,9 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed (breaking)
+
+- **`CacheSettings.pg_uri`**: the field no longer has a default value. `SEMANTIC_CACHE_PG_URI` must now be set explicitly; pydantic-settings raises `ValidationError` at startup if the variable is absent. Previously the default `postgresql://user:pass@localhost:5432/semanticcache` was silently used, risking accidental production deployments with well-known credentials.
+
 ### Fixed
 
 - **`CacheSettings.openai_api_key`**: set repr=False to prevent API keys being leaked in .
+- **`docker/compose.yml`**: hardcoded `user`/`pass` credentials replaced with `${POSTGRES_USER}` / `${POSTGRES_PASSWORD}` host-environment variables (compose fails fast if either is unset). Postgres and Redis port bindings restricted to `127.0.0.1` so they are not reachable from outside the host.
 
 ## [0.4.1] - 2026-05-23
 
