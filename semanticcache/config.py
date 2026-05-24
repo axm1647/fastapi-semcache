@@ -120,7 +120,15 @@ class CacheSettings(BaseSettings):
         ),
     )
 
-    embedder_type: EmbedderType = "huggingface"
+    embedder_type: EmbedderType = Field(
+        default="huggingface",
+        description=(
+            "Embedder backend selected by get_embedder. "
+            "huggingface loads sentence-transformers in-process (high overhead; "
+            "not recommended for production). Prefer openai, voyage, or ollama "
+            "for deployed services."
+        ),
+    )
     hugging_face_api_key: str | None = Field(
         default=None,
         description="Hugging Face API key",

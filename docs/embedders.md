@@ -70,6 +70,8 @@ Optional: pass **`embedding_dim=`** to assert it matches `embedder.embedding_dim
 
 When you use the built-in Hugging Face backend through **`get_embedder(settings)`**, **`SBERTEmbedder`** receives the token from **`settings.hugging_face_api_key`**. **`SBERTEmbedder`** does not re-read global settings on its own.
 
+**Production note:** **`SBERTEmbedder`** loads **sentence-transformers** and **PyTorch** inside your app process. That adds significant memory and CPU/GPU overhead compared with hosted APIs. It is intended for local development and tests. On first construction, the library emits a one-time **`UserWarning`** recommending **`openai`**, **`voyage`**, **`ollama`**, or a custom **`BaseEmbedder`** for deployed workloads.
+
 ### `CacheResult.source` and settings
 
 **`CacheResult.source`** is still derived from **`CacheSettings.embedder_type`** (environment **`SEMANTIC_CACHE_EMBEDDER_TYPE`**) for hits and misses, not from the concrete embedder class or **`model_name`**. If you rely on that field for metrics, either align **`embedder_type`** with the backend you instantiated (**`huggingface`** vs **`openai`**) or treat **`source`** as configuration metadata only when **`embedder`** was passed explicitly.

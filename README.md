@@ -66,6 +66,11 @@ Dependency notes:
 
 ### Hugging Face / Sentence Transformers
 
+Best for local development and tests. Loading a model in-process adds memory and
+compute overhead on every embed call; for production, prefer a hosted backend
+(`openai`, `voyage`, `ollama`) or a custom `BaseEmbedder` that calls your own
+embedding service. Instantiating `SBERTEmbedder` emits a one-time `UserWarning`.
+
 ```bash
 pip install "fastapi-semcache[embed-huggingface]"
 ```

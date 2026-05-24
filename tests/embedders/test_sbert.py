@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import warnings
 from typing import Any
 
 import numpy as np
@@ -112,6 +113,27 @@ class _FakeSentenceTransformer:
 def _patch_require_st(monkeypatch: pytest.MonkeyPatch, cls: type[Any]) -> None:
     """Make ``SBERTEmbedder`` load ``cls`` instead of real ``SentenceTransformer``."""
     monkeypatch.setattr(sbert_mod, "_require_sentence_transformers", lambda: cls)
+
+
+def test_init_warns_not_for_production_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """First construction emits a production-use warning; later ones do not."""
+    monkeypatch.setattr(
+        sbert_mod, "_HUGGINGFACE_PRODUCTION_WARNING_EMITTED", False
+    )
+    _patch_require_st(monkeypatch, _FakeSentenceTransformer)
+    with pytest.warns(UserWarning, match="not recommended for production"):
+        SBERTEmbedder()
+    with warnings.catch_warnings(record=True) as record:
+        warnings.simplefilter("always")
+        SBERTEmbedder()
+    repeat_warnings = [
+        w
+        for w in record
+        if "not recommended for production" in str(w.message)
+    ]
+    assert not repeat_warnings
 
 
 @pytest.mark.asyncio

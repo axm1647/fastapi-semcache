@@ -7,10 +7,32 @@
 from __future__ import annotations
 
 import asyncio
+import warnings
 from typing import cast, final, override
 
 from ..exceptions import EmbeddingDimensionUnavailableException
 from ._base import BaseEmbedder
+
+_HUGGINGFACE_PRODUCTION_WARNING_EMITTED = False
+
+
+def _warn_huggingface_not_for_production() -> None:
+    """Emit a one-time warning that local HF embeddings are dev-oriented."""
+    global _HUGGINGFACE_PRODUCTION_WARNING_EMITTED
+    if _HUGGINGFACE_PRODUCTION_WARNING_EMITTED:
+        return
+    _HUGGINGFACE_PRODUCTION_WARNING_EMITTED = True
+    warnings.warn(
+        (
+            "SBERTEmbedder (embedder_type='huggingface') loads sentence-transformers "
+            "and PyTorch in-process. That adds significant memory and CPU/GPU "
+            "overhead on every request and is not recommended for production. "
+            "Prefer a hosted embedder (openai, voyage, ollama) or your own "
+            "BaseEmbedder backed by a dedicated embedding service."
+        ),
+        UserWarning,
+        stacklevel=3,
+    )
 
 
 def _require_sentence_transformers():
@@ -62,6 +84,7 @@ class SBERTEmbedder(BaseEmbedder):
             api_key: Optional Hugging Face API key for private models and
                 rate-limited access.
         """
+        _warn_huggingface_not_for_production()
         SentenceTransformer = _require_sentence_transformers()
         self._model_name = model_name
         self._model = SentenceTransformer(model_name, token=api_key)

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`SBERTEmbedder`**: emit a one-time **`UserWarning`** on first construction when using the Hugging Face / sentence-transformers backend (`embedder_type='huggingface'`). The message notes in-process PyTorch memory and CPU/GPU overhead and recommends hosted embedders (`openai`, `voyage`, `ollama`) or a custom **`BaseEmbedder`** for production. **`CacheSettings.embedder_type`** description, **`README.md`**, **`docs/embedders.md`**, **`docs/index.md`**, and **`.env.example`** document the same guidance.
+
 ### Changed (breaking)
 
 - **`CacheSettings.pg_uri`**: the field no longer has a default value. `SEMANTIC_CACHE_PG_URI` must now be set explicitly; pydantic-settings raises `ValidationError` at startup if the variable is absent. Previously the default `postgresql://user:pass@localhost:5432/semanticcache` was silently used, risking accidental production deployments with well-known credentials.
