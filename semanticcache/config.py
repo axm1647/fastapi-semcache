@@ -56,7 +56,14 @@ class CacheSettings(BaseSettings):
         le=1.0,
     )
     pg_uri: str = Field(
-        description="PostgreSQL URI with pgvector extension (required; set SEMANTIC_CACHE_PG_URI).",
+        default="",
+        description=(
+            "PostgreSQL URI with pgvector extension. "
+            "Required for any Postgres-backed operation; set via SEMANTIC_CACHE_PG_URI. "
+            "An empty value is accepted at settings-construction time so that "
+            "non-Postgres code paths (middleware config, embedder selection, etc.) "
+            "can be exercised without a live database."
+        ),
         repr=False,
     )
     redis_uri: str = Field(
