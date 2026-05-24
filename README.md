@@ -4,17 +4,24 @@
 
 # fastapi-semcache
 
-Ultra-lightweight semantic caching middleware for FastAPI APIs and LLM endpoints.
+Semantic caching middleware for FastAPI APIs and LLM endpoints.
 
-`fastapi-semcache` adds semantic response caching as a thin async middleware layer. Vector similarity search runs inside Postgres via pgvector. Python never owns the heavy computation. It works as FastAPI middleware today and can also run as a reverse proxy in front of an upstream API or LLM service.
+`fastapi-semcache` adds a thin async caching layer around your FastAPI app.
+It embeds incoming requests, searches for similar cached responses in Postgres
+with pgvector, and falls through to your handler on a miss. It can also run as a
+reverse proxy in front of an upstream API or LLM service.
 
 The PyPI distribution and GitHub repository are **`fastapi-semcache`**. The import package remains **`semanticcache`** (**`fastapi_semcache`** is available as an alias).
 
 ## Why fastapi-semcache?
 
-`fastapi-semcache` is an ultra-lightweight middleware with a minimal, honest dependency footprint. The core install adds four packages to your project: `fastapi`, `pydantic-settings`, `psycopg` (libpq C bindings), and `httpx`. No vector database service to run, no ML runtime in the hot path, no framework to build around.
+`fastapi-semcache` is meant for projects that already use FastAPI and Postgres
+and want semantic response caching without adding a separate vector database.
+The core install adds `fastapi`, `pydantic-settings`, `psycopg` (libpq C
+bindings), and `httpx`.
 
-**Python is the glue, not the bottleneck.** In the request hot path, Python parses the JSON body, dispatches async I/O, and coordinates the result. That is all. Every computationally heavy operation is offloaded:
+In the request hot path, Python parses the JSON body, dispatches async I/O, and
+coordinates the result. The heavier work happens elsewhere:
 
 | What | Where it runs |
 |------|--------------|
@@ -23,11 +30,17 @@ The PyPI distribution and GitHub repository are **`fastapi-semcache`**. The impo
 | Response blob storage and retrieval | Postgres rows or Redis (C clients) |
 | HTTP proxying | `httpx.AsyncClient` (async I/O) |
 
-Because all meaningful work is either I/O-bound (GIL released) or executing inside a C extension, Python is never the ceiling even under high concurrency with a single `uvicorn` worker. The likely bottlenecks under load are your Postgres connection pool and your embedder API, not this middleware.
+Under load, the first things to watch are usually your Postgres connection pool
+and your embedding provider, not Python CPU time in the middleware.
 
-It plugs into FastAPI with minimal refactoring, while giving you direct control over embeddings, similarity thresholds, vector storage, and cache behavior. The default setup keeps things simple: find the highest-similarity match, apply a threshold, and return a cached response only when it is safe to do so.
+The middleware keeps the main choices explicit: embedder, similarity threshold,
+vector storage, Redis usage, tenant scope, and cache behavior. By default it
+looks for the closest match, applies the configured threshold, and returns a
+cached response only when the match passes.
 
-It supports FastAPI middleware as a first-class integration path and can also run as a reverse proxy in front of an upstream API or LLM service. Planned support for Django and Flask will extend the same integration model to other Python web stacks.
+FastAPI middleware is the primary integration path. Reverse proxy mode is useful
+when you want a standalone caching layer in front of an existing service.
+Planned Django and Flask support will use the same general model.
 
 ## When not to use
 
@@ -48,7 +61,10 @@ See [docs/when-not-to-use.md](docs/when-not-to-use.md) for a fuller treatment wi
 pip install fastapi-semcache
 ```
 
-**Custom embedders:** subclass `BaseEmbedder` from `semanticcache.embedders` and pass it to `SemanticCache(embedder=...)` to skip the optional embedding extras. See [docs/embedders.md](docs/embedders.md).
+If you already have an embedding service, subclass `BaseEmbedder` from
+`semanticcache.embedders` and pass it to `SemanticCache(embedder=...)`. You do
+not need any of the optional embedding extras in that setup. See
+[docs/embedders.md](docs/embedders.md).
 
 Optional extras:
 
@@ -58,7 +74,7 @@ Optional extras:
 - `embed-voyage`: Voyage AI embeddings (`voyageai`, `aiohttp`).
 - `embed-ollama`: Ollama embeddings via the OpenAI-compatible HTTP API (`openai` only).
 
-Dependency notes:
+Notes:
 
 - Core `fastapi-semcache` has no LangChain dependency.
 - Core does **not** include the `redis` PyPI package; use **`pip install "fastapi-semcache[redis]"`** whenever you configure a non-empty Redis URI (otherwise the first Redis use raises `ImportError` with an install hint).
@@ -66,16 +82,19 @@ Dependency notes:
 
 ### Hugging Face / Sentence Transformers
 
-Best for local development and tests. Loading a model in-process adds memory and
-compute overhead on every embed call; for production, prefer a hosted backend
-(`openai`, `voyage`, `ollama`) or a custom `BaseEmbedder` that calls your own
-embedding service. Instantiating `SBERTEmbedder` emits a one-time `UserWarning`.
+This is mainly useful for local development and tests. Loading a model
+in-process adds memory and compute overhead to each embed call. For production,
+use a hosted backend (`openai`, `voyage`, `ollama`) or a custom `BaseEmbedder`
+that calls your own embedding service. Instantiating `SBERTEmbedder` emits a
+one-time `UserWarning`.
 
 ```bash
 pip install "fastapi-semcache[embed-huggingface]"
 ```
 
-That pulls CPU PyTorch from PyPI. For **GPU (CUDA)**, use the same extra but pass PyTorch's wheel index so pip resolves CUDA builds. Pick a CUDA version that matches your system from [PyTorch Get Started](https://pytorch.org/get-started/locally/):
+That pulls CPU PyTorch from PyPI. For **GPU (CUDA)**, use the same extra and pass
+PyTorch's wheel index so pip resolves CUDA builds. Pick a CUDA version that
+matches your system from [PyTorch Get Started](https://pytorch.org/get-started/locally/):
 
 ```bash
 pip install "fastapi-semcache[embed-huggingface]" \
@@ -84,7 +103,8 @@ pip install "fastapi-semcache[embed-huggingface]" \
 
 ### OpenAI embeddings
 
-Install the OpenAI extra so `embedder_type="openai"` works (pulls `openai` and `tiktoken`). Set `OPENAI_API_KEY` in your environment.
+Install the OpenAI extra to use `embedder_type="openai"`. It pulls `openai` and
+`tiktoken`. Set `OPENAI_API_KEY` in your environment.
 
 ```bash
 pip install "fastapi-semcache[embed-openai]"
@@ -92,7 +112,14 @@ pip install "fastapi-semcache[embed-openai]"
 
 ### Voyage embeddings
 
-Install the Voyage extra so `embedder_type="voyage"` works (pulls `voyageai` and `aiohttp`). Set **`VOYAGE_API_KEY`** or **`SEMANTIC_CACHE_VOYAGE_API_KEY`**. Optional **`SEMANTIC_CACHE_VOYAGE_EMBEDDING_MODEL`** and **`SEMANTIC_CACHE_VOYAGE_EMBEDDING_DIMENSIONS`** default to **`voyage-4`** and **`1024`** when unset (they must match your chosen model and pgvector column width). Set **`SEMANTIC_CACHE_VOYAGE_INPUT_TYPE`** to **`query`** or **`document`** when you want Voyage’s input-type hint on each request.
+Install the Voyage extra to use `embedder_type="voyage"`. It pulls `voyageai`
+and `aiohttp`. Set **`VOYAGE_API_KEY`** or
+**`SEMANTIC_CACHE_VOYAGE_API_KEY`**. Optional
+**`SEMANTIC_CACHE_VOYAGE_EMBEDDING_MODEL`** and
+**`SEMANTIC_CACHE_VOYAGE_EMBEDDING_DIMENSIONS`** default to **`voyage-4`** and
+**`1024`** when unset. They must match your chosen model and pgvector column
+width. Set **`SEMANTIC_CACHE_VOYAGE_INPUT_TYPE`** to **`query`** or
+**`document`** when you want Voyage's input-type hint on each request.
 
 ```bash
 pip install "fastapi-semcache[embed-voyage]"
@@ -100,7 +127,14 @@ pip install "fastapi-semcache[embed-voyage]"
 
 ### Ollama embeddings
 
-Install the Ollama extra so `embedder_type="ollama"` works (pulls `openai` only). Set **`SEMANTIC_CACHE_OLLAMA_EMBEDDING_MODEL`** and **`SEMANTIC_CACHE_OLLAMA_EMBEDDING_DIMENSIONS`** to match the embedding model you run (dimensions must match pgvector). Optionally set **`SEMANTIC_CACHE_OLLAMA_BASE_URL`** (default `http://127.0.0.1:11434/v1`) and **`OLLAMA_API_KEY`** or **`SEMANTIC_CACHE_OLLAMA_API_KEY`** when your server uses auth.
+Install the Ollama extra to use `embedder_type="ollama"`. It pulls `openai`
+only because Ollama exposes an OpenAI-compatible embeddings endpoint. Set
+**`SEMANTIC_CACHE_OLLAMA_EMBEDDING_MODEL`** and
+**`SEMANTIC_CACHE_OLLAMA_EMBEDDING_DIMENSIONS`** to match the embedding model you
+run. The dimensions must match pgvector. Optionally set
+**`SEMANTIC_CACHE_OLLAMA_BASE_URL`** (default `http://127.0.0.1:11434/v1`) and
+**`OLLAMA_API_KEY`** or **`SEMANTIC_CACHE_OLLAMA_API_KEY`** when your server uses
+auth.
 
 ```bash
 pip install "fastapi-semcache[embed-ollama]"
@@ -176,7 +210,7 @@ async def chat_completions(body: dict[str, Any]) -> dict[str, Any]:
     # middleware can build the cache key (see default_extract_query). By default a
     # tenant scope is also required (header X-Semantic-Cache-Scope or JSON
     # cache_scope / tenant_id); those values are client-controlled unless you replace
-    # extract_scope — unsuitable for multi-tenant production without a trusted edge
+    # extract_scope, so they are unsuitable for multi-tenant production without a trusted edge
     # or server-side scope (see docs/cache-tuning.md). Misses run your handler;
     # hits short-circuit with a cached JSON body.
     return {"choices": [{"message": {"role": "assistant", "content": "Hello"}}]}
@@ -302,8 +336,8 @@ By default, `fastapi-semcache` uses a **buffered** response mode: the middleware
 
 Set `response_mode` on `CacheSettings` to control how cache-miss responses are delivered:
 
-- **`"buffered"` (default)** -- full response is buffered before the client receives anything; cache write completes before the response is returned.
-- **`"tee"`** -- chunks are forwarded to the client as they arrive; the cache write runs in a background task after the stream completes. This gives lower time-to-first-byte for streaming upstreams (for example token streaming or SSE) while still accumulating the full body for storage.
+- **`"buffered"` (default)**: full response is buffered before the client receives anything; cache write completes before the response is returned.
+- **`"tee"`**: chunks are forwarded to the client as they arrive; the cache write runs in a background task after the stream completes. This gives lower time-to-first-byte for streaming upstreams (for example token streaming or SSE) while still accumulating the full body for storage.
 
 In both modes the cache stores only fully assembled JSON object responses. The tee path respects the same store rules as the buffered path (headers, validation, and size limits).
 
@@ -311,8 +345,8 @@ In both modes the cache stores only fully assembled JSON object responses. The t
 
 Set `hit_response_mode` on `CacheSettings` to control how cache-hit responses are delivered:
 
-- **`"single"` (default)** -- the cached body is returned as a single HTTP response.
-- **`"stream"`** -- the cached body is emitted as ASGI body chunks, matching the framing of a streaming miss response. When `response_mode="tee"` and `hit_response_mode` is not explicitly set, it defaults to `"stream"` automatically so hit and miss delivery are symmetric.
+- **`"single"` (default)**: the cached body is returned as a single HTTP response.
+- **`"stream"`**: the cached body is emitted as ASGI body chunks, matching the framing of a streaming miss response. When `response_mode="tee"` and `hit_response_mode` is not explicitly set, it defaults to `"stream"` automatically so hit and miss delivery are symmetric.
 
 Use `hit_stream_chunk_size` (env `SEMANTIC_CACHE_HIT_STREAM_CHUNK_SIZE`, default `0`) to split hit responses into multiple chunks of at most that many bytes. `0` sends the full body as a single chunk, which is sufficient for most clients; positive values are useful for clients that measure time-to-first-byte or process tokens incrementally.
 
