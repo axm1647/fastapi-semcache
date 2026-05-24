@@ -544,7 +544,7 @@ class SemanticCache:
             )
 
     async def close(self) -> None:
-        """Close the Postgres pool and Redis client if they were opened."""
+        """Close stores and optional embedder resources (e.g. Voyage aiohttp session)."""
         if self._closed:
             return
         self._closed = True
@@ -553,3 +553,6 @@ class SemanticCache:
             self._pg_open = False
         if self._redis_store is not None:
             await self._redis_store.close()
+        aclose = getattr(self._embedder, "aclose", None)
+        if aclose is not None:
+            await aclose()

@@ -558,3 +558,39 @@ async def test_put_reuses_query_embedding_from_get_miss() -> None:
     await cache.put("reuse me", {"ok": True}, query_embedding=miss.query_embedding)
     assert embedder.calls == 1
     mock_vs.upsert.assert_awaited_once()
+
+
+class _EmbedderWithAclose(_FixedEmbedder):
+    """Fixed embedder that tracks ``aclose`` for shutdown tests."""
+
+    def __init__(self, *, dim: int = 4) -> None:
+        super().__init__(dim=dim)
+        self.aclose = AsyncMock()
+
+
+@pytest.mark.asyncio
+async def test_close_invokes_embedder_aclose_when_present() -> None:
+    """``SemanticCache.close`` awaits ``embedder.aclose`` when implemented."""
+    embedder = _EmbedderWithAclose()
+    cache = _make_cache(embedder)
+    cache._vector_store.close = AsyncMock()
+    cache._pg_open = True
+
+    await cache.close()
+
+    embedder.aclose.assert_awaited_once()
+    assert cache._closed is True
+
+
+@pytest.mark.asyncio
+async def test_close_is_idempotent_for_embedder_aclose() -> None:
+    """Second ``close`` does not call ``aclose`` again."""
+    embedder = _EmbedderWithAclose()
+    cache = _make_cache(embedder)
+    cache._vector_store.close = AsyncMock()
+    cache._pg_open = True
+
+    await cache.close()
+    await cache.close()
+
+    embedder.aclose.assert_awaited_once()

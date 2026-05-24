@@ -125,6 +125,17 @@ class VoyageEmbedder(BaseEmbedder):
                 self._session = self._aiohttp.ClientSession()
             return self._session
 
+    async def aclose(self) -> None:
+        """Close the shared aiohttp session if one was created.
+
+        Safe to call when no session exists or when ``close`` was already invoked.
+        """
+        with self._session_lock:
+            session = self._session
+            self._session = None
+        if session is not None and not session.closed:
+            await session.close()
+
     def _validate_token_counts(self, texts: list[str], offset: int) -> None:
         """Validate each text is within the per-input context length using voyageai tokenizer.
 

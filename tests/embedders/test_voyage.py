@@ -284,3 +284,45 @@ async def test_embed_batch_raises_on_duplicate_index(
 
     with pytest.raises(ValueError, match="duplicate embedding index"):
         await emb.embed(["hello", "world"])
+
+
+@pytest.mark.asyncio
+async def test_aclose_closes_open_session(monkeypatch: pytest.MonkeyPatch) -> None:
+    """``aclose`` awaits ``ClientSession.close`` and clears the session reference."""
+    emb, _, _ = _make_embedder(monkeypatch)
+    mock_session = MagicMock()
+    mock_session.closed = False
+    mock_session.close = AsyncMock()
+    emb._session = mock_session
+
+    await emb.aclose()
+
+    mock_session.close.assert_awaited_once()
+    assert emb._session is None
+
+
+@pytest.mark.asyncio
+async def test_aclose_noop_when_session_never_created(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``aclose`` is safe when no session was lazily created."""
+    emb, _, _ = _make_embedder(monkeypatch)
+    await emb.aclose()
+    assert emb._session is None
+
+
+@pytest.mark.asyncio
+async def test_aclose_skips_already_closed_session(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``aclose`` does not call ``close`` on an already-closed session."""
+    emb, _, _ = _make_embedder(monkeypatch)
+    mock_session = MagicMock()
+    mock_session.closed = True
+    mock_session.close = AsyncMock()
+    emb._session = mock_session
+
+    await emb.aclose()
+
+    mock_session.close.assert_not_awaited()
+    assert emb._session is None

@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **`MiddlewareCoordination`**: flight lock registry saturation now logs at **warning** instead of **critical**; the condition is graceful degradation (lost deduplication), not a fatal error.
 
+### Fixed
+
+- **`VoyageEmbedder`** / **`SemanticCache.close()`**: the lazily created `aiohttp.ClientSession` is now closed via `VoyageEmbedder.aclose()`, which `SemanticCache.close()` invokes when the embedder implements it.
+
 
 ## [0.4.2] - 2026-05-24
 

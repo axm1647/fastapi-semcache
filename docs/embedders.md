@@ -221,7 +221,7 @@ Set `SEMANTIC_CACHE_EMBEDDER_TYPE=voyage`. The following environment variables c
 
 ### Notes
 
-- The `aiohttp.ClientSession` is created lazily on the first `embed()` call and shared across all requests.
+- The `aiohttp.ClientSession` is created lazily on the first `embed()` call and shared across all requests. Call `await embedder.aclose()` on shutdown, or `await cache.close()` which invokes `aclose()` when the embedder implements it.
 - Token validation via `voyageai.Client.tokenize` is a local CPU operation - it loads the model's Hugging Face tokenizer on first call.
 - Batches are capped at 1,000 texts per request (Voyage's documented hard limit).
 
@@ -237,7 +237,7 @@ Through **`get_embedder(settings)`**, **`SEMANTIC_CACHE_OLLAMA_EMBEDDING_MODEL`*
 
 ## Reusing a long-lived HTTP client
 
-Opening a client per `embed` call is simple but not ideal under load. You can hold an **`httpx.AsyncClient`** on the embedder and close it when your app shuts down (for example in a FastAPI lifespan handler). **`SemanticCache.close`** does not close your embedder.
+Opening a client per `embed` call is simple but not ideal under load. You can hold an **`httpx.AsyncClient`** on the embedder and close it when your app shuts down (for example in a FastAPI lifespan handler). Implement **`aclose()`** on custom embedders with long-lived clients; **`SemanticCache.close()`** awaits it when present.
 
 ## See also
 
