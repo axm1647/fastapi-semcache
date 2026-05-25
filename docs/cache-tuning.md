@@ -174,7 +174,10 @@ The settings are:
 Important operational note:
 
 - `m` and `ef_construction` only affect **newly created** HNSW indexes. Changing these settings does not rebuild an existing index automatically.
+- If you change `m` or `ef_construction` after the index already exists, the running application keeps using that existing on-disk index with its old build parameters. Restarting the app or changing environment variables alone does not update the index structure.
+- To make new `m` or `ef_construction` values take effect, rebuild or recreate the index outside the library.
 - `ef_search` affects **query-time** behavior and can be changed without rebuilding indexes.
+- Changing `ef_search` does not invalidate the HNSW index. It is the safe runtime tuning knob for recall versus latency. Lower values usually reduce latency and recall; higher values usually increase recall and query cost.
 
 Example global configuration:
 

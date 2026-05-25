@@ -20,6 +20,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **`VoyageEmbedder`** / **`SemanticCache.close()`**: the lazily created `aiohttp.ClientSession` is now closed via `VoyageEmbedder.aclose()`, which `SemanticCache.close()` invokes when the embedder implements it.
 
+### Documentation
+
+- **`docs/cache-tuning.md`** / **`docs/index.md`**: make pgvector HNSW tuning behavior explicit. `m` and `ef_construction` are build-time settings for newly created indexes only, so changing them after index creation does not update the existing on-disk index until it is rebuilt or recreated. `ef_search` is documented as the safe runtime tuning knob because it changes query-time behavior without rebuilding or invalidating the index.
+
 
 ## [0.4.2] - 2026-05-24
 

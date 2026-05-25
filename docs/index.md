@@ -164,9 +164,9 @@ app.add_middleware(YourAuthMiddleware)
 | `SEMANTIC_CACHE_THRESHOLD` | `0.95` | Primary cosine similarity gate \[0.0, 1.0] |
 | `SEMANTIC_CACHE_TOP_K_CANDIDATES` | `1` | Max nearest-neighbor candidates from pgvector |
 | `SEMANTIC_CACHE_REJECTION_THRESHOLD` | _(unset)_ | Optional stricter second-stage cutoff |
-| `SEMANTIC_CACHE_PGVECTOR_HNSW_M` | `16` | HNSW graph connectivity used when creating a new pgvector index |
-| `SEMANTIC_CACHE_PGVECTOR_HNSW_EF_CONSTRUCTION` | `64` | HNSW build candidate list size used when creating a new pgvector index |
-| `SEMANTIC_CACHE_PGVECTOR_HNSW_EF_SEARCH` | _(unset)_ | Optional default query-time HNSW search breadth |
+| `SEMANTIC_CACHE_PGVECTOR_HNSW_M` | `16` | HNSW graph connectivity for new pgvector indexes; existing indexes keep the old value until rebuilt |
+| `SEMANTIC_CACHE_PGVECTOR_HNSW_EF_CONSTRUCTION` | `64` | HNSW build candidate list size for new pgvector indexes; existing indexes keep the old value until rebuilt |
+| `SEMANTIC_CACHE_PGVECTOR_HNSW_EF_SEARCH` | _(unset)_ | Optional default query-time HNSW search breadth; safe to change without rebuilding the index |
 | `SEMANTIC_CACHE_REDIS_URI` | _(empty)_ | Redis URI; omit for Postgres-only mode |
 | `SEMANTIC_CACHE_REQUIRE_CACHE_SCOPE` | `false` | Require a non-empty scope on every request (multi-tenant) |
 | `SEMANTIC_CACHE_CACHE_AUTHORIZED_REQUESTS` | `false` | Cache requests that include an `Authorization` header |
