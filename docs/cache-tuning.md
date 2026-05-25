@@ -50,6 +50,17 @@ For privacy and HTTP cache-safety alignment, middleware also skips cache writes 
 Middleware also bypasses cache reads and writes for requests that include an `Authorization` header unless you explicitly opt in with `SEMANTIC_CACHE_CACHE_AUTHORIZED_REQUESTS=true` (`CacheSettings.cache_authorized_requests`). This default reduces accidental reuse of per-user responses across authenticated callers.
 This is especially important for reverse-proxy deployments because upstream APIs often require `Authorization`; without this setting those requests always miss and never write cache entries.
 
+### Prompt-safe failure logs
+
+When cache reads fail, `SemanticCacheMiddleware` logs `route`, `scope`,
+`request_id`, the exception metadata, and a keyed digest of the composed lookup
+text instead of logging any prompt-derived text directly.
+
+Set `SEMANTIC_CACHE_LOG_DIGEST_KEY` (`CacheSettings.log_digest_key`) when you
+want those digests to remain stable across process restarts. When unset, the
+library falls back to a per-process random key, which still avoids prompt
+leakage but limits digest correlation to the current process lifetime.
+
 ### Request and response body size limits
 
 `SemanticCacheMiddleware` buffers the full request body and the full downstream response. To cap memory use and reduce abuse from huge payloads, use **`max_request_body_bytes`** and **`max_response_body_bytes`**. Each defaults to **`DEFAULT_MAX_BODY_BYTES`** (10 MiB). When a client request exceeds the request cap, the middleware answers with **HTTP 413** before the route runs. When the upstream response would exceed the response cap, the client receives **HTTP 502** (the handler may still have run; the middleware does not forward an oversized body). Set either argument to **`None`** to disable that limit (not recommended in untrusted or high-concurrency production setups). The same options are accepted by **`create_semantic_cache_proxy_app`** via keyword arguments.
@@ -123,7 +134,7 @@ Redis key when Redis is enabled) so one bad row cannot force repeated misses.
 
 **Trust boundary:** Header and JSON scope values are only safe isolation boundaries when your deployment sets them (for example from verified JWT claims at the edge) or overwrites untrusted client fields before they reach this middleware. Otherwise a client can pick another tenant id and probe for cache hits; always derive scope from authenticated identity in multi-tenant systems.
 
-**Settings alignment:** `SemanticCacheMiddleware` applies `require_cache_scope` and the gate for “missing scope” using **`SemanticCache.settings`** when the `cache` argument is a real `SemanticCache` instance. `cache_settings` still controls circuit breaker, flight-lock limits, and the `cache_authorized_requests` gate. When both `cache_settings` and `cache.settings` are supplied and disagree on `require_cache_scope` or `cache_authorized_requests`, the middleware raises `ValueError` at startup. Pass a single aligned `CacheSettings` object to both `SemanticCache` and the middleware, or omit `cache_settings` from the middleware to let `cache.settings` take full effect.
+**Settings alignment:** `SemanticCacheMiddleware` applies `require_cache_scope`, `response_mode`, `log_digest_key`, and the gate for “missing scope” using **`SemanticCache.settings`** when the `cache` argument is a real `SemanticCache` instance. `cache_settings` still controls circuit breaker, flight-lock limits, and the `cache_authorized_requests` gate. When both `cache_settings` and `cache.settings` are supplied and disagree on `require_cache_scope`, `cache_authorized_requests`, or `log_digest_key`, the middleware raises `ValueError` at startup. Pass a single aligned `CacheSettings` object to both `SemanticCache` and the middleware, or omit `cache_settings` from the middleware to let `cache.settings` take full effect.
 
 Integer **`tenant_id`** (JSON number) is accepted and normalized to a string for storage keys.
 

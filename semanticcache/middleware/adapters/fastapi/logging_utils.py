@@ -2,28 +2,38 @@
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import logging
 
 from starlette.requests import Request
 
-_CACHE_KEY_LOG_MAX = 48
+_CACHE_KEY_DIGEST_HEX_LEN = 16
 _logger = logging.getLogger(__name__)
 
 
-def cache_key_snippet(query: str, max_chars: int = _CACHE_KEY_LOG_MAX) -> str:
-    """Return a short, non-secret prefix of the cache key for logs.
+def cache_key_digest(
+    query: str,
+    *,
+    digest_key: str,
+    hex_chars: int = _CACHE_KEY_DIGEST_HEX_LEN,
+) -> str:
+    """Return a short keyed digest of cache lookup text for logs.
 
     Args:
         query: Full cache lookup text.
-        max_chars: Maximum characters before truncation.
+        digest_key: Secret key used for the HMAC digest.
+        hex_chars: Maximum hexadecimal characters to return.
 
     Returns:
-        Truncated text with an ellipsis when shortened.
+        Truncated hexadecimal HMAC digest.
     """
-    text = query.replace("\n", " ").strip()
-    if len(text) <= max_chars:
-        return text
-    return f"{text[:max_chars]}..."
+    digest = hmac.new(
+        digest_key.encode("utf-8"),
+        query.encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+    return digest[:hex_chars]
 
 
 def request_id_for_log(request: Request) -> str | None:
@@ -46,6 +56,7 @@ def log_cache_get_failure(
     *,
     request: Request,
     query: str,
+    digest_key: str,
     model: str | None,
     scope: str | None,
     phase: str,
@@ -56,22 +67,23 @@ def log_cache_get_failure(
     Args:
         request: Current request for route and request id context.
         query: Cache key text.
+        digest_key: Secret key used for the cache key digest.
         model: Optional model key for logs.
         scope: Optional tenant scope for logs.
         phase: Preflight or double-check phase label.
         exc: Exception raised by the cache layer.
     """
     rid = request_id_for_log(request)
-    snippet = cache_key_snippet(query)
+    digest = cache_key_digest(query, digest_key=digest_key)
     model_s = (model or "").strip()[:64] or "-"
     scope_s = (scope or "").strip()[:64] or "-"
     _logger.warning(
         "Semantic cache read failed (%s): route=%s request_id=%s "
-        "cache_key_snippet=%r model=%s scope=%s error=%s: %s",
+        "cache_key_digest=%s model=%s scope=%s error=%s: %s",
         phase,
         request.url.path,
         rid if rid is not None else "-",
-        snippet,
+        digest,
         model_s,
         scope_s,
         type(exc).__name__,

@@ -19,10 +19,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **`VoyageEmbedder`** / **`SemanticCache.close()`**: the lazily created `aiohttp.ClientSession` is now closed via `VoyageEmbedder.aclose()`, which `SemanticCache.close()` invokes when the embedder implements it.
+- **`SemanticCacheMiddleware`** warning logs: cache read failures no longer log prompt-derived cache key snippets. They now emit a keyed HMAC digest together with `route`, `scope`, and `request_id`. `CacheSettings.log_digest_key` (`SEMANTIC_CACHE_LOG_DIGEST_KEY`) lets operators keep those digests stable across restarts; when unset, a per-process random key is used.
 
 ### Documentation
 
 - **`docs/cache-tuning.md`** / **`docs/index.md`**: make pgvector HNSW tuning behavior explicit. `m` and `ef_construction` are build-time settings for newly created indexes only, so changing them after index creation does not update the existing on-disk index until it is rebuilt or recreated. `ef_search` is documented as the safe runtime tuning knob because it changes query-time behavior without rebuilding or invalidating the index.
+- **`docs/cache-tuning.md`** / **`docs/index.md`** / **`.env.example`**: document prompt-safe failure logging and `SEMANTIC_CACHE_LOG_DIGEST_KEY`.
 
 
 ## [0.4.2] - 2026-05-24

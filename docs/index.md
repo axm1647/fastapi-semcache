@@ -138,6 +138,11 @@ See [Embedders](embedders.md) for the full contract and built-in options.
 
 By default (`SEMANTIC_CACHE_REQUIRE_CACHE_SCOPE=false`), the cache uses one shared bucket (single-tenant). For multi-tenant isolation, set `SEMANTIC_CACHE_REQUIRE_CACHE_SCOPE=true` and supply a server-side `extract_scope` that derives scope from authenticated identity. Do not rely on client-controlled `X-Semantic-Cache-Scope` or JSON `cache_scope` / `tenant_id` alone; clients can forge those values.
 
+Middleware warning logs also avoid prompt text. Cache read failures log `route`,
+`scope`, `request_id`, and a keyed digest of the composed lookup text. Set
+`SEMANTIC_CACHE_LOG_DIGEST_KEY` when you want those digests to stay stable across
+process restarts.
+
 ```python
 from semanticcache.middleware.core.extractors import trusted_extract_scope_from_server_side
 
@@ -170,6 +175,7 @@ app.add_middleware(YourAuthMiddleware)
 | `SEMANTIC_CACHE_REDIS_URI` | _(empty)_ | Redis URI; omit for Postgres-only mode |
 | `SEMANTIC_CACHE_REQUIRE_CACHE_SCOPE` | `false` | Require a non-empty scope on every request (multi-tenant) |
 | `SEMANTIC_CACHE_CACHE_AUTHORIZED_REQUESTS` | `false` | Cache requests that include an `Authorization` header |
+| `SEMANTIC_CACHE_LOG_DIGEST_KEY` | _(per-process random)_ | Secret used to derive HMAC digests for prompt-derived log fields; set explicitly for stable correlation across restarts |
 | `SEMANTIC_CACHE_RESPONSE_MODE` | `buffered` | Miss delivery mode (`buffered` or `tee`) |
 | `SEMANTIC_CACHE_HIT_RESPONSE_MODE` | _(auto)_ | Hit delivery mode (`single` or `stream`) |
 | `SEMANTIC_CACHE_PG_TTL_DAYS` | _(unset)_ | Fractional days before Postgres rows expire |

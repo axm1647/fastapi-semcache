@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import secrets
 import warnings
 from typing import ClassVar, Literal
 
@@ -11,6 +12,8 @@ from pydantic import AliasChoices, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from .types import EmbedderType
+
+_DEFAULT_LOG_DIGEST_KEY = secrets.token_hex(32)
 
 
 class CacheSettings(BaseSettings):
@@ -316,6 +319,16 @@ class CacheSettings(BaseSettings):
             "header. Default False to avoid accidental cross-user response reuse."
         ),
     )
+    log_digest_key: str = Field(
+        default=_DEFAULT_LOG_DIGEST_KEY,
+        description=(
+            "Secret key used to derive HMAC digests for prompt-derived log fields. "
+            "Set explicitly for stable correlation across process restarts. When "
+            "unset, a per-process random key is used so digests stay comparable only "
+            "within the current process lifetime."
+        ),
+        repr=False,
+    )
     response_mode: Literal["buffered", "tee"] = Field(
         default="buffered",
         description=(
@@ -372,6 +385,17 @@ class CacheSettings(BaseSettings):
             and "hit_response_mode" not in self.model_fields_set
         ):
             self.hit_response_mode = "stream"
+        return self
+
+    @model_validator(mode="after")
+    def _default_log_digest_key_when_blank(self) -> CacheSettings:
+        """Replace blank ``log_digest_key`` values with the process-local default.
+
+        Returns:
+            Settings with a non-empty log digest key.
+        """
+        if not self.log_digest_key.strip():
+            self.log_digest_key = _DEFAULT_LOG_DIGEST_KEY
         return self
 
     @model_validator(mode="after")

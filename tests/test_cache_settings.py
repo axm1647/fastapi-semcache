@@ -51,6 +51,13 @@ def test_require_cache_scope_defaults_false() -> None:
     assert CacheSettings().require_cache_scope is False
 
 
+def test_blank_log_digest_key_uses_process_default() -> None:
+    """Replace blank ``log_digest_key`` with a non-empty process-local secret."""
+    settings = CacheSettings(log_digest_key="   ")
+
+    assert settings.log_digest_key.strip()
+
+
 def test_response_mode_invalid_rejected() -> None:
     """Only ``buffered`` and ``tee`` are allowed."""
     with pytest.raises(ValidationError):

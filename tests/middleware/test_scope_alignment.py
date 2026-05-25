@@ -142,3 +142,29 @@ def test_conflicting_cache_authorized_requests_raises_value_error() -> None:
                 cache_authorized_requests=True,
             ),
         )
+
+
+def test_conflicting_log_digest_key_raises_value_error() -> None:
+    """Mismatched ``log_digest_key`` between the two settings sources raises."""
+    cache = SemanticCache(
+        embedder=_MiniEmbedder(),
+        pg_uri="postgresql://mock/mock",
+        redis_uri="",
+        settings=CacheSettings(
+            redis_uri=" ",
+            pg_uri="postgresql://mock/mock",
+            require_cache_scope=False,
+            log_digest_key="cache-log-key",
+        ),
+    )
+    app = FastAPI()
+
+    with pytest.raises(ValueError, match="conflicting CacheSettings"):
+        SemanticCacheMiddleware(
+            app,
+            cache=cache,
+            cache_settings=CacheSettings(
+                require_cache_scope=False,
+                log_digest_key="middleware-log-key",
+            ),
+        )

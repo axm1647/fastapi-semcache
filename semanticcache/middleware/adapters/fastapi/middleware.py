@@ -118,6 +118,7 @@ class SemanticCacheMiddleware:
     _coordination: MiddlewareCoordination
     _cache_authorized_requests: bool
     _cache_put_accepts_query_embedding: bool
+    _log_digest_key: str
     _max_request_body_bytes: int | None
     _max_response_body_bytes: int | None
     app: ASGIApp
@@ -176,15 +177,18 @@ class SemanticCacheMiddleware:
                 Return False to skip storing malformed or route-mismatched payloads.
             cache_settings: Optional settings override; defaults to
                 ``get_cache_settings()`` (429 circuit breaker, flight-lock cap, and
-                ``response_mode`` when the cache does not supply its own settings).
+                log digest configuration when the cache does not supply its own
+                settings).
                 When ``cache`` exposes a ``settings`` attribute (as ``SemanticCache``
-                does), ``require_cache_scope``, ``response_mode``, and the middleware
-                scope gate use it so they stay aligned with ``SemanticCache``;
+                does), ``require_cache_scope``, ``response_mode``,
+                ``log_digest_key``, and the middleware scope gate use it so they
+                stay aligned with ``SemanticCache``;
                 otherwise ``cache_settings`` applies. This source also controls whether
                 requests that include an ``Authorization`` header are cacheable. When
                 both ``cache_settings`` and ``cache.settings`` are provided and
                 disagree on user-facing flags (``require_cache_scope`` or
-                ``cache_authorized_requests``), ``ValueError`` is raised at
+                ``cache_authorized_requests``) or log redaction configuration
+                (``log_digest_key``), ``ValueError`` is raised at
                 startup so the misconfiguration cannot go undetected.
             max_request_body_bytes: Maximum size of the buffered request body (default
                 ``DEFAULT_MAX_BODY_BYTES``, 10 MiB). When exceeded, the client receives
@@ -224,9 +228,11 @@ class SemanticCacheMiddleware:
         if cache_settings_obj is not None:
             self._scope_settings = cache_settings_obj
             self._require_cache_scope = cache_settings_obj.require_cache_scope
+            self._log_digest_key = cache_settings_obj.log_digest_key
         else:
             self._scope_settings = resolved
             self._require_cache_scope = resolved.require_cache_scope
+            self._log_digest_key = resolved.log_digest_key
         self._coordination = MiddlewareCoordination(
             flight_lock_max_entries=resolved.middleware_flight_lock_max_entries,
             circuit_breaker_enabled=resolved.circuit_breaker_429_enabled,
@@ -247,9 +253,10 @@ class SemanticCacheMiddleware:
 
         ``SemanticCacheMiddleware`` reads ``require_cache_scope`` from
         ``cache.settings`` and ``cache_authorized_requests`` (plus the circuit
-        breaker and flight-lock options) from the ``cache_settings`` kwarg.
-        When both sources are supplied and disagree on user-facing flags, the
-        split is always a configuration mistake that would produce inconsistent
+        breaker and flight-lock options) from the ``cache_settings`` kwarg. It
+        also uses ``log_digest_key`` for prompt-safe failure logs. When both
+        sources are supplied and disagree on these fields, the split is always
+        a configuration mistake that would produce inconsistent
         security-relevant behaviour at runtime (for example, the middleware
         permits caching authorized requests while the cache enforces scope, or
         vice versa).
@@ -262,9 +269,14 @@ class SemanticCacheMiddleware:
 
         Raises:
             ValueError: When ``require_cache_scope`` or
-                ``cache_authorized_requests`` differs between the two sources.
+                ``cache_authorized_requests`` or ``log_digest_key`` differs
+                between the two sources.
         """
-        mismatched_fields = ("require_cache_scope", "cache_authorized_requests")
+        mismatched_fields = (
+            "require_cache_scope",
+            "cache_authorized_requests",
+            "log_digest_key",
+        )
         conflicts: list[str] = []
         for field_name in mismatched_fields:
             middleware_value = getattr(middleware_settings, field_name)
@@ -454,6 +466,7 @@ class SemanticCacheMiddleware:
                 on_failure=lambda q, m, scp, ph, exc: log_cache_get_failure(
                     request=request,
                     query=q,
+                    digest_key=self._log_digest_key,
                     model=m,
                     scope=scp,
                     phase=ph,
