@@ -88,6 +88,35 @@ class CacheSettings(BaseSettings):
             "caller's responsibility (e.g. pg_cron or an external task)."
         ),
     )
+    pgvector_hnsw_m: int = Field(
+        default=16,
+        ge=2,
+        description=(
+            "HNSW graph connectivity used when creating a new pgvector index. "
+            "Higher values can improve recall at the cost of more memory and slower "
+            "index builds. Existing indexes are not rebuilt automatically when this "
+            "setting changes."
+        ),
+    )
+    pgvector_hnsw_ef_construction: int = Field(
+        default=64,
+        ge=4,
+        description=(
+            "HNSW build candidate list size used when creating a new pgvector index. "
+            "Higher values can improve recall but increase index build time. Existing "
+            "indexes are not rebuilt automatically when this setting changes."
+        ),
+    )
+    pgvector_hnsw_ef_search: int | None = Field(
+        default=None,
+        ge=1,
+        description=(
+            "Optional default pgvector HNSW search breadth applied to similarity "
+            "queries. Higher values generally improve recall at the cost of more CPU "
+            "and latency. Unset uses the database default unless a per-call override "
+            "is supplied to SemanticCache.get."
+        ),
+    )
 
     pg_pool_size: int = 10
     pg_pool_max_overflow: int = 20

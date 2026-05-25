@@ -8,7 +8,7 @@ import asyncio
 import re
 import math
 from datetime import datetime, timedelta, timezone
-from typing import LiteralString, Self, cast
+from typing import Any, LiteralString, Self, cast
 
 from psycopg import sql
 from psycopg.types.json import Json
@@ -68,6 +68,9 @@ class AsyncPgVectorStore:
     _schema_lock: asyncio.Lock
     _schema_ready: bool
     _ttl_days: float | None
+    _hnsw_m: int
+    _hnsw_ef_construction: int
+    _default_hnsw_ef_search: int | None
 
     def __init__(
         self,
@@ -78,6 +81,9 @@ class AsyncPgVectorStore:
         min_pool_size: int = 1,
         max_pool_size: int = 10,
         ttl_days: float | None = None,
+        hnsw_m: int = 16,
+        hnsw_ef_construction: int = 64,
+        hnsw_ef_search: int | None = None,
     ) -> None:
         """Configure an async connection pool for a ``VECTOR(dim)`` cache table.
 
@@ -90,12 +96,30 @@ class AsyncPgVectorStore:
             ttl_days: Optional TTL in days (fractional allowed). When set, each
                 upserted row receives ``expires_at = NOW() + interval``. When
                 ``None``, ``expires_at`` is left NULL.
+            hnsw_m: HNSW graph connectivity used when creating a new index.
+            hnsw_ef_construction: HNSW build candidate list size used when
+                creating a new index.
+            hnsw_ef_search: Optional default HNSW search breadth applied to
+                similarity queries on this store. ``None`` leaves the database
+                default unchanged unless a per-call override is supplied.
         """
+        if hnsw_m < 2:
+            msg = "hnsw_m must be >= 2"
+            raise ValueError(msg)
+        if hnsw_ef_construction < 4:
+            msg = "hnsw_ef_construction must be >= 4"
+            raise ValueError(msg)
+        if hnsw_ef_search is not None and hnsw_ef_search < 1:
+            msg = "hnsw_ef_search must be >= 1 when set"
+            raise ValueError(msg)
         self._embedding_dim = embedding_dim
         self._table_name = _validate_table_name(table_name)
         self._schema_lock = asyncio.Lock()
         self._schema_ready = False
         self._ttl_days = ttl_days
+        self._hnsw_m = hnsw_m
+        self._hnsw_ef_construction = hnsw_ef_construction
+        self._default_hnsw_ef_search = hnsw_ef_search
         self._pool = AsyncConnectionPool(
             conninfo=pg_uri,
             min_size=min_pool_size,
@@ -131,6 +155,10 @@ class AsyncPgVectorStore:
                 msg = "embedding_dim out of supported range for VECTOR()"
                 raise ValueError(msg)
             dim_lit = sql.SQL(cast(LiteralString, str(self._embedding_dim)))
+            hnsw_m_lit = sql.SQL(cast(LiteralString, str(self._hnsw_m)))
+            hnsw_ef_construction_lit = sql.SQL(
+                cast(LiteralString, str(self._hnsw_ef_construction))
+            )
             tbl = sql.Identifier(self._table_name)
             create_table = sql.SQL(
                 """
@@ -152,9 +180,14 @@ class AsyncPgVectorStore:
                 CREATE INDEX IF NOT EXISTS {idx}
                 ON {tbl}
                 USING hnsw (query_embedding vector_cosine_ops)
-                WITH (m = 16, ef_construction = 64)
+                WITH (m = {hnsw_m}, ef_construction = {hnsw_ef_construction})
                 """
-            ).format(idx=idx_name, tbl=tbl)
+            ).format(
+                idx=idx_name,
+                tbl=tbl,
+                hnsw_m=hnsw_m_lit,
+                hnsw_ef_construction=hnsw_ef_construction_lit,
+            )
             scope_idx_name = sql.Identifier(f"{self._table_name}_scope_model")
             create_scope_idx = sql.SQL(
                 """
@@ -205,6 +238,30 @@ class AsyncPgVectorStore:
                 f"VECTOR({self._embedding_dim})"
             )
             raise ValueError(msg)
+
+    async def _apply_hnsw_ef_search(
+        self,
+        *,
+        cur: Any,
+        ef_search: int | None,
+    ) -> None:
+        """Apply a transaction-local HNSW search breadth when configured.
+
+        Args:
+            cur: Psycopg async cursor used for the current transaction.
+            ef_search: Per-query HNSW search breadth. When ``None``, falls back
+                to the store default. When both are ``None``, no session setting
+                is applied and PostgreSQL uses its current default.
+        """
+        resolved = (
+            ef_search if ef_search is not None else self._default_hnsw_ef_search
+        )
+        if resolved is None:
+            return
+        await cur.execute(
+            "SELECT set_config('hnsw.ef_search', %s, true)",
+            (str(resolved),),
+        )
 
     async def upsert(
         self,
@@ -304,6 +361,7 @@ class AsyncPgVectorStore:
         *,
         model_key: str = "",
         scope_key: str = "",
+        ef_search: int | None = None,
     ) -> list[CacheEntry]:
         """Return up to ``limit`` rows at or above ``threshold`` by cosine similarity.
 
@@ -323,6 +381,10 @@ class AsyncPgVectorStore:
                 the default bucket).
             scope_key: Only consider rows with this ``scope_key`` (empty string is
                 the legacy global bucket).
+            ef_search: Optional HNSW search breadth override for this query.
+                ``None`` falls back to the store default set at construction
+                time; when both are ``None`` PostgreSQL uses its current
+                ``hnsw.ef_search`` default.
 
         Returns:
             List of ``CacheEntry`` objects ordered from highest to lowest similarity.
@@ -355,6 +417,7 @@ class AsyncPgVectorStore:
         ).format(tbl=tbl)
         async with self._pool.connection() as conn:
             async with conn.cursor() as cur:
+                await self._apply_hnsw_ef_search(cur=cur, ef_search=ef_search)
                 _ = await cur.execute(
                     stmt,
                     (
@@ -390,6 +453,7 @@ class AsyncPgVectorStore:
         *,
         model_key: str = "",
         scope_key: str = "",
+        ef_search: int | None = None,
     ) -> CacheEntry | None:
         """Find the nearest row among those meeting the similarity threshold.
 
@@ -401,6 +465,7 @@ class AsyncPgVectorStore:
             threshold: Minimum similarity in ``[0.0, 1.0]`` for a hit.
             model_key: Only consider rows with this ``model_key``.
             scope_key: Only consider rows with this ``scope_key``.
+            ef_search: Optional HNSW search breadth override for this query.
 
         Returns:
             ``CacheEntry`` for the nearest qualifying neighbor by cosine distance;
@@ -415,6 +480,7 @@ class AsyncPgVectorStore:
             limit=1,
             model_key=model_key,
             scope_key=scope_key,
+            ef_search=ef_search,
         )
         if not entries:
             return None

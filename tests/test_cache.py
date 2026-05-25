@@ -108,6 +108,23 @@ def _make_cache(
     )
 
 
+def test_cache_settings_configure_pgvector_hnsw_defaults() -> None:
+    """SemanticCache forwards pgvector HNSW defaults into the vector store."""
+    settings = CacheSettings(
+        redis_uri=" ",
+        pg_uri="postgresql://mock/mock",
+        require_cache_scope=False,
+        pgvector_hnsw_m=24,
+        pgvector_hnsw_ef_construction=96,
+        pgvector_hnsw_ef_search=80,
+    )
+    cache = _make_cache(_FixedEmbedder(), settings=settings)
+
+    assert cache._vector_store._hnsw_m == 24
+    assert cache._vector_store._hnsw_ef_construction == 96
+    assert cache._vector_store._default_hnsw_ef_search == 80
+
+
 @pytest.mark.asyncio
 async def test_get_miss_when_store_returns_none() -> None:
     """Vector miss yields ``is_hit`` False and empty payload."""
@@ -145,6 +162,28 @@ async def test_get_hit_returns_redis_free_payload() -> None:
     assert result.is_hit is True
     assert result.similarity is not None and abs(result.similarity - 0.95) < 1e-9
     assert result.response == {"answer": 42}
+
+
+@pytest.mark.asyncio
+async def test_get_passes_hnsw_ef_search_override_to_vector_store() -> None:
+    """Per-call HNSW ef_search override is forwarded to pgvector search."""
+    cache = _make_cache(_FixedEmbedder())
+    entry = CacheEntry(
+        id=1,
+        query_text="stored query",
+        response={"answer": 42},
+        similarity=0.95,
+    )
+    mock_vs = AsyncMock()
+    mock_vs.open = AsyncMock()
+    mock_vs.ensure_schema = AsyncMock()
+    mock_vs.similarity_search_top_k = AsyncMock(return_value=[entry])
+    cache._vector_store = mock_vs
+
+    result = await cache.get("similar query", hnsw_ef_search=120)
+
+    assert result.is_hit is True
+    assert mock_vs.similarity_search_top_k.await_args.kwargs["ef_search"] == 120
 
 
 @pytest.mark.asyncio

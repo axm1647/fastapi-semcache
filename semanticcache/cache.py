@@ -196,6 +196,9 @@ class SemanticCache:
             min_pool_size=self._settings.pg_pool_size,
             max_pool_size=max_pg,
             ttl_days=self._settings.pg_ttl_days,
+            hnsw_m=self._settings.pgvector_hnsw_m,
+            hnsw_ef_construction=self._settings.pgvector_hnsw_ef_construction,
+            hnsw_ef_search=self._settings.pgvector_hnsw_ef_search,
         )
         self._redis_store: RedisResponseStore | None = (
             RedisResponseStore(
@@ -303,6 +306,7 @@ class SemanticCache:
         *,
         scope: str | None = None,
         storage_scope_key: str | None = None,
+        hnsw_ef_search: int | None = None,
     ) -> CacheResult:
         """Embed the query, search vectors, then optionally resolve Redis by row id.
 
@@ -322,6 +326,9 @@ class SemanticCache:
                 for this request; middleware passes this to avoid resolving twice. Call
                 sites that set this should treat it as internal coordination with the
                 same ``SemanticCache.settings`` used here.
+            hnsw_ef_search: Optional per-call pgvector HNSW search breadth override.
+                When ``None``, the store uses ``CacheSettings.pgvector_hnsw_ef_search``
+                if configured; otherwise PostgreSQL uses its current default.
 
         Returns:
             ``CacheResult`` with ``is_hit`` False on vector miss, else True with
@@ -357,6 +364,7 @@ class SemanticCache:
                 limit=top_k,
                 model_key=model_key,
                 scope_key=scope_key,
+                ef_search=hnsw_ef_search,
             ),
         )
         if not entries:

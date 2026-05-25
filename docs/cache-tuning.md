@@ -149,6 +149,53 @@ The first stage embeds the query and runs a pgvector similarity search:
 
 After this stage you get up to `top_k_candidates` `CacheEntry` rows ordered from highest to lowest similarity, all with `similarity >= threshold`.
 
+### pgvector HNSW tuning
+
+`SemanticCache` now exposes the main pgvector HNSW knobs in two places:
+
+- **Global defaults** through `CacheSettings` / environment variables.
+- **Per-call query override** for `hnsw.ef_search` through `SemanticCache.get(..., hnsw_ef_search=...)`.
+
+The settings are:
+
+- **`SEMANTIC_CACHE_PGVECTOR_HNSW_M`** (`CacheSettings.pgvector_hnsw_m`):
+  - Default `16`.
+  - Used when creating a new HNSW index.
+  - Higher values generally improve recall and memory use, but increase index size and build cost.
+- **`SEMANTIC_CACHE_PGVECTOR_HNSW_EF_CONSTRUCTION`** (`CacheSettings.pgvector_hnsw_ef_construction`):
+  - Default `64`.
+  - Used when creating a new HNSW index.
+  - Higher values generally improve recall, but slow index builds.
+- **`SEMANTIC_CACHE_PGVECTOR_HNSW_EF_SEARCH`** (`CacheSettings.pgvector_hnsw_ef_search`):
+  - Default unset.
+  - Applied at query time as a transaction-local pgvector setting for similarity search.
+  - Higher values generally improve recall, but increase CPU and latency.
+
+Important operational note:
+
+- `m` and `ef_construction` only affect **newly created** HNSW indexes. Changing these settings does not rebuild an existing index automatically.
+- `ef_search` affects **query-time** behavior and can be changed without rebuilding indexes.
+
+Example global configuration:
+
+```bash
+SEMANTIC_CACHE_PGVECTOR_HNSW_M=16
+SEMANTIC_CACHE_PGVECTOR_HNSW_EF_CONSTRUCTION=64
+SEMANTIC_CACHE_PGVECTOR_HNSW_EF_SEARCH=80
+```
+
+Example per-query override:
+
+```python
+result = await cache.get(
+    "what is the refund policy?",
+    model="gpt-5.4-mini",
+    hnsw_ef_search=120,
+)
+```
+
+This override applies only to that lookup. Other requests keep using the configured default or the database default.
+
 ### Stage 2: optional rejection threshold
 
 The second stage can apply a stricter similarity cutoff on the in-memory candidates:
