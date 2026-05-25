@@ -33,13 +33,10 @@ def _vector_literal(embedding: list[float]) -> str:
         NonFiniteEmbeddingValueException: If any value is non-finite (nan or inf).
     """
     parts: list[str] = []
-    for x in embedding:
+    for i, x in enumerate(embedding):
         f = float(x)
         if not math.isfinite(f):
-            raise NonFiniteEmbeddingValueException(
-                index=embedding.index(x),
-                value=f,
-            )
+            raise NonFiniteEmbeddingValueException(index=i, value=f)
         parts.append(str(f))
     return "[" + ",".join(parts) + "]"
 
