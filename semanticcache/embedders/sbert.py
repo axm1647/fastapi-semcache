@@ -27,7 +27,7 @@ def _warn_huggingface_not_for_production() -> None:
             "SBERTEmbedder (embedder_type='huggingface') loads sentence-transformers "
             "and PyTorch in-process. That adds significant memory and CPU/GPU "
             "overhead on every request and is not recommended for production. "
-            "Prefer a hosted embedder (openai, voyage, ollama) or your own "
+            "Prefer a hosted embedder (openai, voyage, ollama, cohere) or your own "
             "BaseEmbedder backed by a dedicated embedding service."
         ),
         UserWarning,
