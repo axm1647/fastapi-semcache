@@ -347,8 +347,8 @@ class CacheSettings(BaseSettings):
             '"single": The cached body is returned as a single HTTP response. '
             '"stream": The cached body is emitted as one or more ASGI body chunks '
             "over the raw send callable, matching the framing of a streaming miss "
-            "response. When response_mode=\"tee\" and this field is not explicitly "
-            "set, it defaults to \"stream\" automatically so hit and miss delivery "
+            'response. When response_mode="tee" and this field is not explicitly '
+            'set, it defaults to "stream" automatically so hit and miss delivery '
             "are symmetric. Set SEMANTIC_CACHE_HIT_RESPONSE_MODE to override."
         ),
     )
@@ -357,13 +357,13 @@ class CacheSettings(BaseSettings):
         ge=0,
         description=(
             "Maximum byte size of each synthetic body chunk when "
-            "hit_response_mode=\"stream\". "
+            'hit_response_mode="stream". '
             "0 (default) sends the entire cached body as a single chunk with "
             "more_body=False, which is already sufficient for most streaming "
             "clients. Positive values split the body into multiple chunks of at "
             "most this many bytes, which is useful for clients that measure "
             "time-to-first-byte or process tokens incrementally. "
-            "Has no effect when hit_response_mode=\"single\". "
+            'Has no effect when hit_response_mode="single". '
             "Set SEMANTIC_CACHE_HIT_STREAM_CHUNK_SIZE to configure."
         ),
     )

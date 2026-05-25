@@ -71,9 +71,7 @@ class RedisResponseStore:
             if self._socket_timeout_seconds is not None:
                 kwargs["socket_timeout"] = self._socket_timeout_seconds
             if self._socket_connect_timeout_seconds is not None:
-                kwargs["socket_connect_timeout"] = (
-                    self._socket_connect_timeout_seconds
-                )
+                kwargs["socket_connect_timeout"] = self._socket_connect_timeout_seconds
             self._client = redis_asyncio.from_url(self._redis_uri, **kwargs)
         return self._client
 

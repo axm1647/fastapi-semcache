@@ -235,10 +235,14 @@ class CohereEmbedder(BaseEmbedder):
             InvalidEmbeddingDimensionException: If a vector length does not match
                 ``dimensions``.
         """
-        response = await self._get_client().v2.embed(**self._build_v2_embed_kwargs(texts))
+        response = await self._get_client().v2.embed(
+            **self._build_v2_embed_kwargs(texts)
+        )
         vectors = self._extract_float_vectors(response)
         if len(vectors) != len(texts):
-            msg = f"Cohere API returned {len(vectors)} embeddings for {len(texts)} inputs"
+            msg = (
+                f"Cohere API returned {len(vectors)} embeddings for {len(texts)} inputs"
+            )
             raise ValueError(msg)
         self._validate_vector_lengths(vectors)
         return vectors
@@ -272,7 +276,9 @@ class CohereEmbedder(BaseEmbedder):
         response = await self._get_client().embed(**kwargs)
         vectors = self._extract_float_vectors(response)
         if len(vectors) != len(texts):
-            msg = f"Cohere API returned {len(vectors)} embeddings for {len(texts)} inputs"
+            msg = (
+                f"Cohere API returned {len(vectors)} embeddings for {len(texts)} inputs"
+            )
             raise ValueError(msg)
         self._validate_vector_lengths(vectors)
         return vectors

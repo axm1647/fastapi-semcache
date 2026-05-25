@@ -135,7 +135,9 @@ class MiddlewareCoordination:
             lock = self._flight_locks.get(key)
             if lock is not None:
                 self._flight_locks.move_to_end(key)
-                return _FlightLock(lock, key, self._flight_locks, self._flight_lock_registry)
+                return _FlightLock(
+                    lock, key, self._flight_locks, self._flight_lock_registry
+                )
             lock = asyncio.Lock()
             self._flight_locks[key] = lock
             self._evict_unused_flight_locks()
@@ -147,7 +149,9 @@ class MiddlewareCoordination:
                     "may duplicate upstream work until capacity frees.",
                     self._flight_lock_max_entries,
                 )
-            return _FlightLock(lock, key, self._flight_locks, self._flight_lock_registry)
+            return _FlightLock(
+                lock, key, self._flight_locks, self._flight_lock_registry
+            )
 
     async def upstream_blocked_by_circuit(self) -> bool:
         """Return True when 429 circuit is open and upstream must not be called.

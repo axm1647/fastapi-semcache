@@ -455,10 +455,17 @@ class SemanticCacheMiddleware:
         max_resp_bytes = self._max_response_body_bytes
 
         async def _do_cache_get(
-            query: str, model: str | None, storage: str, *, phase: str, raw_scope: str | None
+            query: str,
+            model: str | None,
+            storage: str,
+            *,
+            phase: str,
+            raw_scope: str | None,
         ) -> tuple[CacheResult, bool]:
             return await cache_get_fail_open(
-                cache_get=lambda q, m, s: self._cache.get(q, model=m, storage_scope_key=s),
+                cache_get=lambda q, m, s: self._cache.get(
+                    q, model=m, storage_scope_key=s
+                ),
                 query=query,
                 model=model,
                 scope=raw_scope,
@@ -506,7 +513,9 @@ class SemanticCacheMiddleware:
                 ),
             )
 
-        def _record_builder(pld: dict[str, object], resp: Response) -> dict[str, object]:
+        def _record_builder(
+            pld: dict[str, object], resp: Response
+        ) -> dict[str, object]:
             return cache_record_from_response(
                 payload=pld,
                 response=resp,
@@ -520,11 +529,11 @@ class SemanticCacheMiddleware:
             storage: str,
             embedding: list[float] | None,
         ) -> None:
-            await self._cache_put_with_optional_embedding(q, record, mdl, storage, embedding)
+            await self._cache_put_with_optional_embedding(
+                q, record, mdl, storage, embedding
+            )
 
-        _stream_hit: (
-            Callable[[CacheResult, Send, Scope], Awaitable[bool]] | None
-        ) = None
+        _stream_hit: Callable[[CacheResult, Send, Scope], Awaitable[bool]] | None = None
         if self._scope_settings.hit_response_mode == "stream":
 
             async def _stream_hit(
@@ -551,10 +560,14 @@ class SemanticCacheMiddleware:
             require_cache_scope=self._require_cache_scope,
             scope_settings=self._scope_settings,
             extract_query=self._extract_query,
-            extract_model=self._extract_model or (
-                lambda req, b: default_extract_model(req, b, model_header_name=model_header)
+            extract_model=self._extract_model
+            or (
+                lambda req, b: default_extract_model(
+                    req, b, model_header_name=model_header
+                )
             ),
-            extract_scope_required=self._extract_scope or (
+            extract_scope_required=self._extract_scope
+            or (
                 lambda req, b: default_extract_scope_from_request_context(
                     req, b, scope_header_name=scope_header
                 )

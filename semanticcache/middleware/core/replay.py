@@ -256,8 +256,7 @@ async def stream_cache_hit(
     merged_headers = {**replay_headers, **hit_headers}
 
     raw_headers: list[tuple[bytes, bytes]] = [
-        (k.encode("latin-1"), v.encode("latin-1"))
-        for k, v in merged_headers.items()
+        (k.encode("latin-1"), v.encode("latin-1")) for k, v in merged_headers.items()
     ]
     await send(
         {

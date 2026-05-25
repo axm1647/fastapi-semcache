@@ -160,8 +160,7 @@ class AsyncPgVectorStore:
                 cast(LiteralString, str(self._hnsw_ef_construction))
             )
             tbl = sql.Identifier(self._table_name)
-            create_table = sql.SQL(
-                """
+            create_table = sql.SQL("""
                 CREATE TABLE IF NOT EXISTS {tbl} (
                   id SERIAL PRIMARY KEY,
                   query_text TEXT NOT NULL,
@@ -172,54 +171,41 @@ class AsyncPgVectorStore:
                   created_at TIMESTAMPTZ DEFAULT NOW(),
                   expires_at TIMESTAMPTZ DEFAULT NULL
                 )
-                """
-            ).format(tbl=tbl, dim=dim_lit)
+                """).format(tbl=tbl, dim=dim_lit)
             idx_name = sql.Identifier(f"{self._table_name}_hnsw")
-            create_idx = sql.SQL(
-                """
+            create_idx = sql.SQL("""
                 CREATE INDEX IF NOT EXISTS {idx}
                 ON {tbl}
                 USING hnsw (query_embedding vector_cosine_ops)
                 WITH (m = {hnsw_m}, ef_construction = {hnsw_ef_construction})
-                """
-            ).format(
+                """).format(
                 idx=idx_name,
                 tbl=tbl,
                 hnsw_m=hnsw_m_lit,
                 hnsw_ef_construction=hnsw_ef_construction_lit,
             )
             scope_idx_name = sql.Identifier(f"{self._table_name}_scope_model")
-            create_scope_idx = sql.SQL(
-                """
+            create_scope_idx = sql.SQL("""
                 CREATE INDEX IF NOT EXISTS {idx}
                 ON {tbl} (scope_key, model_key)
-                """
-            ).format(idx=scope_idx_name, tbl=tbl)
+                """).format(idx=scope_idx_name, tbl=tbl)
             uniq_name = sql.Identifier(f"{self._table_name}_uniq_query")
-            create_uniq = sql.SQL(
-                """
+            create_uniq = sql.SQL("""
                 CREATE UNIQUE INDEX IF NOT EXISTS {idx}
                 ON {tbl} (query_text, model_key, scope_key)
-                """
-            ).format(idx=uniq_name, tbl=tbl)
-            migrate_model_key = sql.SQL(
-                """
+                """).format(idx=uniq_name, tbl=tbl)
+            migrate_model_key = sql.SQL("""
                 ALTER TABLE {tbl}
                 ADD COLUMN IF NOT EXISTS model_key TEXT NOT NULL DEFAULT ''
-                """
-            ).format(tbl=tbl)
-            migrate_scope_key = sql.SQL(
-                """
+                """).format(tbl=tbl)
+            migrate_scope_key = sql.SQL("""
                 ALTER TABLE {tbl}
                 ADD COLUMN IF NOT EXISTS scope_key TEXT NOT NULL DEFAULT ''
-                """
-            ).format(tbl=tbl)
-            migrate_expires_at = sql.SQL(
-                """
+                """).format(tbl=tbl)
+            migrate_expires_at = sql.SQL("""
                 ALTER TABLE {tbl}
                 ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ DEFAULT NULL
-                """
-            ).format(tbl=tbl)
+                """).format(tbl=tbl)
             async with self._pool.connection() as conn:
                 async with conn.cursor() as cur:
                     await cur.execute(create_table)
@@ -253,9 +239,7 @@ class AsyncPgVectorStore:
                 to the store default. When both are ``None``, no session setting
                 is applied and PostgreSQL uses its current default.
         """
-        resolved = (
-            ef_search if ef_search is not None else self._default_hnsw_ef_search
-        )
+        resolved = ef_search if ef_search is not None else self._default_hnsw_ef_search
         if resolved is None:
             return
         await cur.execute(
@@ -302,8 +286,7 @@ class AsyncPgVectorStore:
             else None
         )
         tbl = sql.Identifier(self._table_name)
-        insert = sql.SQL(
-            """
+        insert = sql.SQL("""
             INSERT INTO {tbl} (query_text, query_embedding, response, model_key, scope_key, expires_at)
             VALUES (%s, %s::vector, %s::jsonb, %s, %s, %s)
             ON CONFLICT (query_text, model_key, scope_key)
@@ -313,8 +296,7 @@ class AsyncPgVectorStore:
                 created_at      = NOW(),
                 expires_at      = EXCLUDED.expires_at
             RETURNING id
-            """
-        ).format(tbl=tbl)
+            """).format(tbl=tbl)
         async with self._pool.connection() as conn:
             async with conn.cursor() as cur:
                 _ = await cur.execute(
@@ -400,8 +382,7 @@ class AsyncPgVectorStore:
         self._ensure_dim(query_embedding)
         vec = _vector_literal(query_embedding)
         tbl = sql.Identifier(self._table_name)
-        stmt = sql.SQL(
-            """
+        stmt = sql.SQL("""
             WITH q AS (SELECT %s::vector AS v)
             SELECT t.id, t.query_text, t.response,
                    (1 - (t.query_embedding <=> q.v)) AS similarity
@@ -413,8 +394,7 @@ class AsyncPgVectorStore:
               AND (t.expires_at IS NULL OR t.expires_at > NOW())
             ORDER BY t.query_embedding <=> q.v
             LIMIT %s
-            """
-        ).format(tbl=tbl)
+            """).format(tbl=tbl)
         async with self._pool.connection() as conn:
             async with conn.cursor() as cur:
                 await self._apply_hnsw_ef_search(cur=cur, ef_search=ef_search)

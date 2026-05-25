@@ -40,7 +40,8 @@ def get_embedder(settings: CacheSettings | None = None) -> BaseEmbedder:
     if resolved.embedder_type == "cohere":
         return CohereEmbedder(
             model_name=resolved.cohere_embedding_model or COHERE_DEFAULT_MODEL,
-            dimensions=resolved.cohere_embedding_dimensions or COHERE_DEFAULT_DIMENSIONS,
+            dimensions=resolved.cohere_embedding_dimensions
+            or COHERE_DEFAULT_DIMENSIONS,
             input_type=cast(
                 CohereInputType,
                 resolved.cohere_input_type or COHERE_DEFAULT_INPUT_TYPE,

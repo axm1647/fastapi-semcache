@@ -98,8 +98,7 @@ async def default_extract_query(request: Request, body: bytes) -> str | None:
     # payloads that happen to start with "{" as JSON.
     is_json_content_type = "application/json" in ct or "+json" in ct
     looks_json = is_json_content_type or (
-        (not ct or ct.startswith("text/"))
-        and body_stripped[:1] in (b"{", b"[")
+        (not ct or ct.startswith("text/")) and body_stripped[:1] in (b"{", b"[")
     )
     if not looks_json:
         return None
