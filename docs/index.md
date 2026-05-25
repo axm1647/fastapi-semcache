@@ -136,7 +136,7 @@ See [Embedders](embedders.md) for the full contract and built-in options.
 
 ### Cache scope and tenant isolation
 
-By default (`SEMANTIC_CACHE_REQUIRE_CACHE_SCOPE=true`), the middleware reads the partition key from `X-Semantic-Cache-Scope` or the JSON fields `cache_scope` / `tenant_id`. **Clients can forge these values**: For multi-tenant production APIs, always supply a server-side `extract_scope` that derives scope from authenticated identity.
+By default (`SEMANTIC_CACHE_REQUIRE_CACHE_SCOPE=false`), the cache uses one shared bucket (single-tenant). For multi-tenant isolation, set `SEMANTIC_CACHE_REQUIRE_CACHE_SCOPE=true` and supply a server-side `extract_scope` that derives scope from authenticated identity. Do not rely on client-controlled `X-Semantic-Cache-Scope` or JSON `cache_scope` / `tenant_id` alone; clients can forge those values.
 
 ```python
 from semanticcache.middleware.core.extractors import trusted_extract_scope_from_server_side
@@ -165,7 +165,7 @@ app.add_middleware(YourAuthMiddleware)
 | `SEMANTIC_CACHE_TOP_K_CANDIDATES` | `1` | Max nearest-neighbor candidates from pgvector |
 | `SEMANTIC_CACHE_REJECTION_THRESHOLD` | _(unset)_ | Optional stricter second-stage cutoff |
 | `SEMANTIC_CACHE_REDIS_URI` | _(empty)_ | Redis URI; omit for Postgres-only mode |
-| `SEMANTIC_CACHE_REQUIRE_CACHE_SCOPE` | `true` | Require a non-empty scope on every request |
+| `SEMANTIC_CACHE_REQUIRE_CACHE_SCOPE` | `false` | Require a non-empty scope on every request (multi-tenant) |
 | `SEMANTIC_CACHE_CACHE_AUTHORIZED_REQUESTS` | `false` | Cache requests that include an `Authorization` header |
 | `SEMANTIC_CACHE_RESPONSE_MODE` | `buffered` | Miss delivery mode (`buffered` or `tee`) |
 | `SEMANTIC_CACHE_HIT_RESPONSE_MODE` | _(auto)_ | Hit delivery mode (`single` or `stream`) |

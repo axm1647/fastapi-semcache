@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`CacheSettings.require_cache_scope`**: default is now **`false`** (single-tenant shared bucket). The previous default (`true`) encouraged client-controlled scope headers and JSON fields, which are unsafe for multi-tenant production without a trusted edge or server-side **`extract_scope`**. Multi-tenant deployments should set **`SEMANTIC_CACHE_REQUIRE_CACHE_SCOPE=true`** and derive scope from authenticated identity.
 - **`MiddlewareCoordination`**: flight lock registry saturation now logs at **warning** instead of **critical**; the condition is graceful degradation (lost deduplication), not a fatal error.
 
 ### Fixed

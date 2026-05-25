@@ -46,6 +46,11 @@ def test_response_mode_defaults_buffered() -> None:
     assert CacheSettings().response_mode == "buffered"
 
 
+def test_require_cache_scope_defaults_false() -> None:
+    """Default tenancy is single-tenant (shared bucket without client scope)."""
+    assert CacheSettings().require_cache_scope is False
+
+
 def test_response_mode_invalid_rejected() -> None:
     """Only ``buffered`` and ``tee`` are allowed."""
     with pytest.raises(ValidationError):

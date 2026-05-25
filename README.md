@@ -167,19 +167,16 @@ You can combine extras, for example **`pip install "fastapi-semcache[redis,embed
 
 > **Security: cache scope and cross-tenant isolation**
 >
-> By default (`SEMANTIC_CACHE_REQUIRE_CACHE_SCOPE=true`), the middleware reads the
-> cache partition key from client-controlled sources: the `X-Semantic-Cache-Scope`
-> header and the `cache_scope` / `tenant_id` JSON body fields. **Any client can
-> forge these values to read another tenant's cached responses or write responses
-> into another tenant's cache partition.**
+> By default (`SEMANTIC_CACHE_REQUIRE_CACHE_SCOPE=false`), the cache uses one
+> shared bucket (single-tenant). No client-supplied scope is required.
 >
-> This default is safe only for single-tenant apps (consider setting
-> `SEMANTIC_CACHE_REQUIRE_CACHE_SCOPE=false` to remove the scope requirement
-> entirely) or when a trusted edge/gateway overwrites those fields from verified
-> identity before requests reach your app.
+> For **multi-tenant** APIs, set `SEMANTIC_CACHE_REQUIRE_CACHE_SCOPE=true` and
+> supply a server-side `extract_scope` that derives scope from authenticated
+> identity. Do not rely on client-controlled `X-Semantic-Cache-Scope` or JSON
+> `cache_scope` / `tenant_id`; clients can forge those values to read or pollute
+> another tenant's partition.
 >
-> **For multi-tenant APIs exposed directly to clients, always supply a server-side
-> `extract_scope`:**
+> **Multi-tenant example (server-side scope):**
 >
 > ```python
 > from starlette.requests import Request
@@ -220,11 +217,10 @@ app.add_middleware(SemanticCacheMiddleware, cache=cache)
 @app.post("/v1/chat/completions")
 async def chat_completions(body: dict[str, Any]) -> dict[str, Any]:
     # Clients should send JSON with prompt, query, input, or chat messages so the
-    # middleware can build the cache key (see default_extract_query). By default a
-    # tenant scope is also required (header X-Semantic-Cache-Scope or JSON
-    # cache_scope / tenant_id); those values are client-controlled unless you replace
-    # extract_scope, so they are unsuitable for multi-tenant production without a trusted edge
-    # or server-side scope (see docs/cache-tuning.md). Misses run your handler;
+    # middleware can build the cache key (see default_extract_query). By default no
+    # tenant scope is required (single-tenant shared bucket). For multi-tenant APIs set
+    # SEMANTIC_CACHE_REQUIRE_CACHE_SCOPE=true and server-side extract_scope (see
+    # docs/cache-tuning.md). Misses run your handler;
     # hits short-circuit with a cached JSON body.
     return {"choices": [{"message": {"role": "assistant", "content": "Hello"}}]}
 ```
@@ -263,7 +259,7 @@ app.add_middleware(
 
 Use **`extract_model`** when the cache key should also vary by model id from headers or JSON (same async `(request, body) -> str | None` idea). That model id is passed through to **`SemanticCache.get` / `put`**, which scope Postgres rows and Redis payload keys per model bucket as described in **`docs/cache-tuning.md`**.
 
-Use **`extract_scope`** (optional) when you need custom tenant or user routing; otherwise, with **`SEMANTIC_CACHE_REQUIRE_CACHE_SCOPE`** left at its default **`true`**, the middleware uses **`default_extract_scope_from_request_context`**, which reads **`X-Semantic-Cache-Scope`** and JSON **`cache_scope`** / **`tenant_id`** (numeric **`tenant_id`** is accepted). That default is appropriate only for single-tenant deployments or when a trusted gateway overwrites those fields from authenticated identity; otherwise clients can spoof another tenant id and probe or pollute another partition. For multi-tenant APIs exposed to clients, pass **`extract_scope`** that derives scope from server-side identity (see **`trusted_extract_scope_from_server_side`** in **`semanticcache.middleware.core.extractors`** after auth middleware sets **`request.state`**). Set **`SEMANTIC_CACHE_REQUIRE_CACHE_SCOPE=false`** only for single-tenant apps or isolated cache storage. Scope rules in middleware match **`SemanticCache.settings`** when **`cache`** is a **`SemanticCache`** instance ( **`cache_settings`** still drives circuit breaker and flight-lock options). **`resolve_cache_scope`** matches the same rules for direct **`SemanticCache`** use.
+Use **`extract_scope`** when you need tenant or user routing. With **`SEMANTIC_CACHE_REQUIRE_CACHE_SCOPE=false`** (default), scope is optional and all requests share one bucket. For multi-tenant isolation, set **`SEMANTIC_CACHE_REQUIRE_CACHE_SCOPE=true`** and pass **`extract_scope`** that derives scope from server-side identity (see **`trusted_extract_scope_from_server_side`** in **`semanticcache.middleware.core.extractors`** after auth middleware sets **`request.state`**). Do not use client headers or JSON scope fields alone in production multi-tenant setups. Scope rules in middleware match **`SemanticCache.settings`** when **`cache`** is a **`SemanticCache`** instance ( **`cache_settings`** still drives circuit breaker and flight-lock options). **`resolve_cache_scope`** matches the same rules for direct **`SemanticCache`** use.
 
 See **`docs/cache-tuning.md`** for upgrade notes on **`scope_key`** and Redis key layout.
 
@@ -331,7 +327,7 @@ app = create_semantic_cache_proxy_app(
 
 Run with `uvicorn mymodule:app --host 0.0.0.0 --port 8080`.
 
-This repository includes a small ASGI app at `app/main.py` (import `app` for uvicorn). Set **`SEMANTIC_CACHE_PROXY_UPSTREAM`** to the backend base URL; the default is `http://127.0.0.1:11434`. For semantic caching in front of a single trusted upstream, set **`SEMANTIC_CACHE_REQUIRE_CACHE_SCOPE=false`** unless you forward a tenant header or JSON scope from clients.
+This repository includes a small ASGI app at `app/main.py` (import `app` for uvicorn). Set **`SEMANTIC_CACHE_PROXY_UPSTREAM`** to the backend base URL; the default is `http://127.0.0.1:11434`. Single-tenant scope is the default (`SEMANTIC_CACHE_REQUIRE_CACHE_SCOPE=false`). For multi-tenant proxy deployments, set **`SEMANTIC_CACHE_REQUIRE_CACHE_SCOPE=true`** and supply server-side **`extract_scope`**.
 
 If your upstream requires an `Authorization` header (for example OpenAI-compatible APIs), set **`SEMANTIC_CACHE_CACHE_AUTHORIZED_REQUESTS=true`** or the middleware will bypass cache reads and writes for those requests.
 

@@ -28,13 +28,15 @@ lookup text includes HTTP method, normalized path, model value, and extracted
 semantic query, then tenant scope is applied separately. This avoids accidental
 cross-endpoint reuse for semantically similar prompts.
 
-**Default (scope required):** `SEMANTIC_CACHE_REQUIRE_CACHE_SCOPE` (`CacheSettings.require_cache_scope`) is **true**. Then:
+**Default (single-tenant):** `SEMANTIC_CACHE_REQUIRE_CACHE_SCOPE` (`CacheSettings.require_cache_scope`) is **false**. Lookups and writes use one shared bucket (`scope_key = ''`) without requiring a tenant scope on each request.
+
+**Multi-tenant (`require_cache_scope=true`):** Set `SEMANTIC_CACHE_REQUIRE_CACHE_SCOPE=true` when you partition cache rows per tenant or namespace. Then:
 
 - `SemanticCache.get(..., scope=...)` / `put(..., scope=...)` require a **non-empty** normalized scope string. Missing scope yields a cache **miss** and **skips** `put` (no cross-tenant writes).
 - Pass the **same** `scope` on `get` and `put` as you use for tenant, org, or user partition (opaque string from your auth layer).
 - Use **`resolve_cache_scope`** to mirror middleware rules in custom integrations.
 
-**Middleware:** When `require_cache_scope` is true and you omit **`extract_scope`**, the middleware uses **`default_extract_scope_from_request_context`**, which reads `X-Semantic-Cache-Scope` and JSON fields `cache_scope` or `tenant_id`. That path trusts client headers and body; use it only for single-tenant setups or when a trusted proxy sets those fields. For multi-tenant production, pass **`extract_scope`** (`(request, body) -> str | None`) that resolves scope from authenticated identity. A concrete helper is **`trusted_extract_scope_from_server_side`** (`semanticcache.middleware.core.extractors`), which reads only **`request.state.cache_scope`** or **`request.state.tenant_id`** after your auth middleware populates them:
+**Middleware:** When `require_cache_scope` is true, pass **`extract_scope`** (`(request, body) -> str | None`) that resolves scope from authenticated identity. Do not use **`default_extract_scope_from_request_context`** (header `X-Semantic-Cache-Scope` and JSON `cache_scope` / `tenant_id`) for production multi-tenant APIs; clients can forge those values. A concrete helper is **`trusted_extract_scope_from_server_side`** (`semanticcache.middleware.core.extractors`), which reads only **`request.state.cache_scope`** or **`request.state.tenant_id`** after your auth middleware populates them:
 
 ```python
 from semanticcache.middleware.core.extractors import trusted_extract_scope_from_server_side
@@ -125,7 +127,7 @@ Redis key when Redis is enabled) so one bad row cannot force repeated misses.
 
 Integer **`tenant_id`** (JSON number) is accepted and normalized to a string for storage keys.
 
-**Single-tenant exception:** Set `SEMANTIC_CACHE_REQUIRE_CACHE_SCOPE=false` only when one customer owns the process **and** dedicated cache storage, or when you intentionally share one global cache bucket.
+**Single-tenant (default):** Leave `SEMANTIC_CACHE_REQUIRE_CACHE_SCOPE=false` (default) when one customer owns the process **and** dedicated cache storage, or when you intentionally share one global cache bucket.
 
 Middleware in-flight lock keys also include the resolved **scope** string so concurrent misses for different tenants are not serialized together.
 

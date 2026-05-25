@@ -103,7 +103,7 @@ def resolve_cache_scope(raw: str | None, *, settings: "CacheSettings") -> str | 
 
     Returns:
         Normalized non-empty scope string for Postgres and Redis, ``""`` when
-        ``require_cache_scope`` is False and scope is optional (legacy single-tenant
+        ``require_cache_scope`` is False and scope is optional (default single-tenant
         bucket), or ``None`` when cache operations must be skipped entirely.
     """
     stripped = "" if raw is None else raw.strip()

@@ -271,11 +271,13 @@ class CacheSettings(BaseSettings):
         ),
     )
     require_cache_scope: bool = Field(
-        True,
+        False,
         description=(
             "When True, ``SemanticCache`` and middleware require a non-empty tenant "
             "or namespace scope for lookups and writes (see ``resolve_cache_scope``). "
-            "Set False only for single-tenant deployments or dedicated cache storage."
+            "Default False uses a single shared cache bucket (single-tenant). Set True "
+            "for multi-tenant isolation together with a server-side ``extract_scope``; "
+            "do not rely on client headers or JSON scope fields alone."
         ),
     )
     cache_authorized_requests: bool = Field(
