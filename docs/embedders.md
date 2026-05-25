@@ -1,6 +1,6 @@
 # Custom embedders and minimal installs
 
-The PyPI package **`fastapi-semcache`** installs core runtime dependencies only (FastAPI, HTTPX, Postgres, settings). Optional extras such as `embed-openai`, `embed-ollama`, `embed-huggingface` and `redis` pull in vendor-specific stacks.
+The PyPI package **`fastapi-semcache`** installs core runtime dependencies only (FastAPI, HTTPX, Postgres, settings). Optional extras such as `embed-openai`, `embed-cohere`, `embed-voyage`, `embed-ollama`, `embed-huggingface` and `redis` pull in vendor-specific stacks.
 
 If you want to avoid those stacks, or you already host embeddings elsewhere, implement a small class against **`BaseEmbedder`** and pass it into **`SemanticCache(embedder=...)`**. No embedding extra is required for that path.
 
@@ -70,7 +70,7 @@ Optional: pass **`embedding_dim=`** to assert it matches `embedder.embedding_dim
 
 When you use the built-in Hugging Face backend through **`get_embedder(settings)`**, **`SBERTEmbedder`** receives the token from **`settings.hugging_face_api_key`**. **`SBERTEmbedder`** does not re-read global settings on its own.
 
-**Production note:** **`SBERTEmbedder`** loads **sentence-transformers** and **PyTorch** inside your app process. That adds significant memory and CPU/GPU overhead compared with hosted APIs. It is intended for local development and tests. On first construction, the library emits a one-time **`UserWarning`** recommending **`openai`**, **`voyage`**, **`ollama`**, or a custom **`BaseEmbedder`** for deployed workloads.
+**Production note:** **`SBERTEmbedder`** loads **sentence-transformers** and **PyTorch** inside your app process. That adds significant memory and CPU/GPU overhead compared with hosted APIs. It is intended for local development and tests. On first construction, the library emits a one-time **`UserWarning`** recommending **`openai`**, **`cohere`**, **`voyage`**, **`ollama`**, or a custom **`BaseEmbedder`** for deployed workloads.
 
 ### `CacheResult.source` and settings
 
@@ -224,6 +224,72 @@ Set `SEMANTIC_CACHE_EMBEDDER_TYPE=voyage`. The following environment variables c
 - The `aiohttp.ClientSession` is created lazily on the first `embed()` call and shared across all requests. Call `await embedder.aclose()` on shutdown, or `await cache.close()` which invokes `aclose()` when the embedder implements it.
 - Token validation via `voyageai.Client.tokenize` is a local CPU operation - it loads the model's Hugging Face tokenizer on first call.
 - Batches are capped at 1,000 texts per request (Voyage's documented hard limit).
+
+## CohereEmbedder (`embed-cohere`)
+
+**`CohereEmbedder`** (optional extra **`embed-cohere`**) calls Cohere's embed API through the official **`cohere.AsyncClient`**. By default it uses **`AsyncClient.embed`**, which batches requests at 96 texts per call. When **`output_dimension`** is set (supported on **`embed-v4`** and newer), it uses **`AsyncClient.v2.embed`** with manual batching so the reduced width is sent to the API.
+
+Install with:
+
+```bash
+pip install 'fastapi-semcache[embed-cohere]'
+```
+
+### Constructor
+
+```python
+CohereEmbedder(
+    model_name="embed-v4.0",
+    *,
+    dimensions=1536,
+    input_type="search_document",
+    output_dimension=None,
+    truncate=None,
+    api_key=None,
+    base_url=None,
+)
+```
+
+- **`model_name`**: Cohere embed model id (for example **`embed-v4.0`**, **`embed-english-v3.0`**, **`embed-multilingual-v3.0`**). Defaults to **`embed-v4.0`**.
+- **`dimensions`**: Storage and validation width. Must match the model's actual output (1536 for **`embed-v4.0`** by default, or **`output_dimension`** when set).
+- **`input_type`**: Required hint for embed v3+: **`search_document`**, **`search_query`**, **`classification`**, or **`clustering`**. Use **`search_document`** when indexing content and **`search_query`** for lookup. Defaults to **`search_document`**.
+- **`output_dimension`**: When set, passed to the v2 API. Only supported by **`embed-v4`** and newer (256, 512, 1024, 1536). Set **`dimensions`** to the same value.
+- **`truncate`**: Optional **`NONE`**, **`START`**, or **`END`** for over-length inputs. When omitted, the API default applies.
+- **`api_key`**: Cohere API key. Defaults to **`COHERE_API_KEY`** when omitted.
+- **`base_url`**: Optional API base URL for enterprise or proxy deployments.
+
+### Example
+
+```python
+from semanticcache import SemanticCache, get_cache_settings
+from semanticcache.embedders import CohereEmbedder
+
+cache = SemanticCache(
+    embedder=CohereEmbedder(
+        model_name="embed-v4.0",
+        dimensions=1536,
+        input_type="search_document",
+        api_key=get_cache_settings().cohere_api_key,
+    ),
+    settings=get_cache_settings(),
+)
+```
+
+### Through `get_embedder`
+
+Set **`SEMANTIC_CACHE_EMBEDDER_TYPE=cohere`**. The following environment variables configure the factory path:
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `COHERE_API_KEY` / `SEMANTIC_CACHE_COHERE_API_KEY` | `None` | API key |
+| `SEMANTIC_CACHE_COHERE_EMBEDDING_MODEL` | `embed-v4.0` | Model id |
+| `SEMANTIC_CACHE_COHERE_EMBEDDING_DIMENSIONS` | `1536` | Vector width |
+| `SEMANTIC_CACHE_COHERE_INPUT_TYPE` | `search_document` | `search_document`, `search_query`, etc. |
+
+### Notes
+
+- Call **`await embedder.aclose()`** on shutdown, or **`await cache.close()`**, which invokes **`aclose()`** when the embedder implements it.
+- Without **`output_dimension`**, the SDK's built-in batching on **`AsyncClient.embed`** applies (96 texts per request).
 
 ## OllamaEmbedder (`embed-ollama`)
 

@@ -2,9 +2,18 @@
 
 # pyright: reportImplicitStringConcatenation=false
 
+from typing import cast
+
 from ..config import CacheSettings, get_cache_settings
 from ..exceptions import NotSupportedEmbedderException
 from ._base import BaseEmbedder
+from .cohere import (
+    COHERE_DEFAULT_DIMENSIONS,
+    COHERE_DEFAULT_INPUT_TYPE,
+    COHERE_DEFAULT_MODEL,
+    CohereEmbedder,
+    CohereInputType,
+)
 from .ollama import OllamaEmbedder
 from .openai import OpenAIEmbedder
 from .sbert import SBERTEmbedder
@@ -29,7 +38,15 @@ def get_embedder(settings: CacheSettings | None = None) -> BaseEmbedder:
     if resolved.embedder_type == "openai":
         return OpenAIEmbedder(api_key=resolved.openai_api_key)
     if resolved.embedder_type == "cohere":
-        raise NotSupportedEmbedderException("Cohere embeddings are not supported yet.")
+        return CohereEmbedder(
+            model_name=resolved.cohere_embedding_model or COHERE_DEFAULT_MODEL,
+            dimensions=resolved.cohere_embedding_dimensions or COHERE_DEFAULT_DIMENSIONS,
+            input_type=cast(
+                CohereInputType,
+                resolved.cohere_input_type or COHERE_DEFAULT_INPUT_TYPE,
+            ),
+            api_key=resolved.cohere_api_key,
+        )
     if resolved.embedder_type == "voyage":
         return VoyageEmbedder(
             model_name=resolved.voyage_embedding_model or VOYAGE_DEFAULT_MODEL,
@@ -59,9 +76,15 @@ def get_embedder(settings: CacheSettings | None = None) -> BaseEmbedder:
 
 __all__: list[str] = [
     "BaseEmbedder",
+    "CohereEmbedder",
     "OllamaEmbedder",
     "OpenAIEmbedder",
     "SBERTEmbedder",
     "VoyageEmbedder",
+    "COHERE_DEFAULT_DIMENSIONS",
+    "COHERE_DEFAULT_INPUT_TYPE",
+    "COHERE_DEFAULT_MODEL",
+    "VOYAGE_DEFAULT_DIMENSIONS",
+    "VOYAGE_DEFAULT_MODEL",
     "get_embedder",
 ]

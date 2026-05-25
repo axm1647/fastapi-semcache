@@ -46,6 +46,7 @@ pip install fastapi-semcache
 |---|---|---|
 | `embed-openai` | `openai`, `tiktoken` | `embedder_type="openai"` |
 | `embed-voyage` | `voyageai`, `aiohttp` | `embedder_type="voyage"` |
+| `embed-cohere` | `cohere` | `embedder_type="cohere"` |
 | `embed-huggingface` | `sentence-transformers`, `torch` | `embedder_type="huggingface"` |
 | `embed-ollama` | `openai` | `embedder_type="ollama"` |
 | `redis` | `redis` | `SEMANTIC_CACHE_REDIS_URI` is set |
@@ -159,7 +160,7 @@ app.add_middleware(YourAuthMiddleware)
 | Variable | Default | Description |
 |---|---|---|
 | `SEMANTIC_CACHE_PG_URI` | _(required)_ | PostgreSQL connection string |
-| `SEMANTIC_CACHE_EMBEDDER_TYPE` | `huggingface` | Embedder backend (`openai`, `voyage`, `huggingface`, `ollama`). `huggingface` loads PyTorch in-process; use hosted backends in production. |
+| `SEMANTIC_CACHE_EMBEDDER_TYPE` | `huggingface` | Embedder backend (`openai`, `cohere`, `voyage`, `huggingface`, `ollama`). `huggingface` loads PyTorch in-process; use hosted backends in production. |
 | `SEMANTIC_CACHE_THRESHOLD` | `0.95` | Primary cosine similarity gate \[0.0, 1.0] |
 | `SEMANTIC_CACHE_TOP_K_CANDIDATES` | `1` | Max nearest-neighbor candidates from pgvector |
 | `SEMANTIC_CACHE_REJECTION_THRESHOLD` | _(unset)_ | Optional stricter second-stage cutoff |

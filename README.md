@@ -72,19 +72,20 @@ Optional extras:
 - `embed-huggingface`: Sentence Transformers and PyTorch. Default PyPI wheels are **CPU**; for CUDA, install with PyTorch's `--extra-index-url` ([below](#hugging-face--sentence-transformers)).
 - `embed-openai`: OpenAI embeddings (`openai`, `tiktoken`).
 - `embed-voyage`: Voyage AI embeddings (`voyageai`, `aiohttp`).
+- `embed-cohere`: Cohere embeddings (`cohere`).
 - `embed-ollama`: Ollama embeddings via the OpenAI-compatible HTTP API (`openai` only).
 
 Notes:
 
 - Core `fastapi-semcache` has no LangChain dependency.
 - Core does **not** include the `redis` PyPI package; use **`pip install "fastapi-semcache[redis]"`** whenever you configure a non-empty Redis URI (otherwise the first Redis use raises `ImportError` with an install hint).
-- Optional extras only add their listed packages (`redis`, `sentence-transformers`/`torch`, `openai`/`tiktoken`, `voyageai`/`aiohttp`, or `openai` alone for `embed-ollama`).
+- Optional extras only add their listed packages (`redis`, `sentence-transformers`/`torch`, `openai`/`tiktoken`, `cohere`, `voyageai`/`aiohttp`, or `openai` alone for `embed-ollama`).
 
 ### Hugging Face / Sentence Transformers
 
 This is mainly useful for local development and tests. Loading a model
 in-process adds memory and compute overhead to each embed call. For production,
-use a hosted backend (`openai`, `voyage`, `ollama`) or a custom `BaseEmbedder`
+use a hosted backend (`openai`, `cohere`, `voyage`, `ollama`) or a custom `BaseEmbedder`
 that calls your own embedding service. Instantiating `SBERTEmbedder` emits a
 one-time `UserWarning`.
 
@@ -123,6 +124,18 @@ width. Set **`SEMANTIC_CACHE_VOYAGE_INPUT_TYPE`** to **`query`** or
 
 ```bash
 pip install "fastapi-semcache[embed-voyage]"
+```
+
+### Cohere embeddings
+
+Install the Cohere extra to use `embedder_type="cohere"`. It pulls `cohere`.
+Set **`COHERE_API_KEY`** or **`SEMANTIC_CACHE_COHERE_API_KEY`**. Optional
+**`SEMANTIC_CACHE_COHERE_EMBEDDING_MODEL`**, **`SEMANTIC_CACHE_COHERE_EMBEDDING_DIMENSIONS`**,
+and **`SEMANTIC_CACHE_COHERE_INPUT_TYPE`** default to **`embed-v4.0`**, **`1536`**,
+and **`search_document`** when unset.
+
+```bash
+pip install "fastapi-semcache[embed-cohere]"
 ```
 
 ### Ollama embeddings
@@ -364,6 +377,10 @@ For `create_semantic_cache_proxy_app`, upstream responses are fetched via `httpx
 - **Voyage AI embeddings** via aiohttp and the Voyage REST API (`embedder_type="voyage"`;
   install `embed-voyage` and set a Voyage API key). Defaults match **`VoyageEmbedder`**
   in code (`voyage-4`, 1024 dimensions) when model and dimensions are not set in env.
+- **Cohere embeddings** via the official async client (`embedder_type="cohere"`;
+  install `embed-cohere` and set a Cohere API key). Defaults match **`CohereEmbedder`**
+  in code (`embed-v4.0`, 1536 dimensions, `search_document` input type) when
+  model and dimensions are not set in env.
 - **Ollama embeddings** via the OpenAI-compatible **`/v1/embeddings`** endpoint
   (`embedder_type="ollama"`; install `embed-ollama`). Model id and vector dimensions are
   required in settings so pgvector storage matches the running model.
@@ -380,10 +397,6 @@ For `create_semantic_cache_proxy_app`, upstream responses are fetched via `httpx
 ## Future support
 
 - **Django** and **Flask** middleware for in-app semantic caching (not yet shipped; same role as the FastAPI middleware).
-
-Embeddings from the following providers are planned:
-
-- **Cohere**
 
 ## Requirements
 

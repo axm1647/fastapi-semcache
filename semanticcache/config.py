@@ -125,8 +125,8 @@ class CacheSettings(BaseSettings):
         description=(
             "Embedder backend selected by get_embedder. "
             "huggingface loads sentence-transformers in-process (high overhead; "
-            "not recommended for production). Prefer openai, voyage, or ollama "
-            "for deployed services."
+            "not recommended for production). Prefer openai, cohere, voyage, or "
+            "ollama for deployed services."
         ),
     )
     hugging_face_api_key: str | None = Field(
@@ -155,6 +155,29 @@ class CacheSettings(BaseSettings):
             "SEMANTIC_CACHE_COHERE_API_KEY",
         ),
         repr=False,
+    )
+    cohere_embedding_model: str | None = Field(
+        default=None,
+        description=(
+            "Cohere embedding model id; used when embedder_type is cohere. "
+            "Defaults to 'embed-v4.0' when unset."
+        ),
+    )
+    cohere_embedding_dimensions: int | None = Field(
+        default=None,
+        ge=1,
+        description=(
+            "Embedding vector width for the configured Cohere model; used when "
+            "embedder_type is cohere. Defaults to 1536 when unset."
+        ),
+    )
+    cohere_input_type: str | None = Field(
+        default=None,
+        description=(
+            "Cohere input_type hint sent with each embed request (search_document, "
+            "search_query, classification, clustering). Used when embedder_type is "
+            "cohere. Defaults to search_document when unset."
+        ),
     )
     voyage_api_key: str | None = Field(
         default=None,

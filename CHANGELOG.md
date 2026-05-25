@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 [Unreleased]
 
+### Added
+
+- **`CohereEmbedder`** (`embed-cohere` extra): embed text with the official **`cohere.AsyncClient`** (v2 embed when **`output_dimension`** is set; otherwise **`AsyncClient.embed`** with SDK batching). Defaults: **`embed-v4.0`**, **1536** dimensions, **`search_document`** input type. Wire via **`SEMANTIC_CACHE_EMBEDDER_TYPE=cohere`** or **`SemanticCache(embedder=CohereEmbedder(...))`**. Settings: **`SEMANTIC_CACHE_COHERE_EMBEDDING_MODEL`**, **`SEMANTIC_CACHE_COHERE_EMBEDDING_DIMENSIONS`**, **`SEMANTIC_CACHE_COHERE_INPUT_TYPE`**. **`aclose()`** closes the shared httpx client; **`SemanticCache.close()`** invokes it.
+
 ### Changed
 
 - **`MiddlewareCoordination`**: flight lock registry saturation now logs at **warning** instead of **critical**; the condition is graceful degradation (lost deduplication), not a fatal error.

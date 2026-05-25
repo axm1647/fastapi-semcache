@@ -11,11 +11,76 @@ from semanticcache.embedders import get_embedder
 from semanticcache.exceptions import NotSupportedEmbedderException
 
 
-def test_cohere_embedder_raises_not_supported() -> None:
-    """Cohere backend is not implemented yet."""
+def test_cohere_embedder_constructed_from_settings(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Factory passes model, dimensions, input_type hint, and API key."""
+    captured: dict[str, object] = {}
+
+    class _TrackingCohere:
+        """Capture constructor kwargs for factory wiring assertions."""
+
+        def __init__(
+            self,
+            model_name: str = "",
+            *,
+            dimensions: int = 0,
+            input_type: str = "",
+            output_dimension: int | None = None,
+            api_key: str | None = None,
+        ) -> None:
+            captured["model_name"] = model_name
+            captured["dimensions"] = dimensions
+            captured["input_type"] = input_type
+            captured["output_dimension"] = output_dimension
+            captured["api_key"] = api_key
+
+    monkeypatch.setattr(embedders_mod, "CohereEmbedder", _TrackingCohere)
+    settings = CacheSettings.model_validate(
+        {
+            "embedder_type": "cohere",
+            "cohere_embedding_model": "embed-v4.0",
+            "cohere_embedding_dimensions": 1536,
+            "cohere_input_type": "search_query",
+            "SEMANTIC_CACHE_COHERE_API_KEY": "ck",
+        }
+    )
+    _ = get_embedder(settings)
+    assert captured["model_name"] == "embed-v4.0"
+    assert captured["dimensions"] == 1536
+    assert captured["input_type"] == "search_query"
+    assert captured["api_key"] == "ck"
+
+
+def test_cohere_embedder_factory_uses_defaults_when_model_and_dims_unset(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Unset Cohere model, dimensions, and input_type fall back to library defaults."""
+    captured: dict[str, object] = {}
+
+    class _TrackingCohere:
+        """Capture constructor kwargs for factory wiring assertions."""
+
+        def __init__(
+            self,
+            model_name: str = "",
+            *,
+            dimensions: int = 0,
+            input_type: str = "",
+            api_key: str | None = None,
+        ) -> None:
+            captured["model_name"] = model_name
+            captured["dimensions"] = dimensions
+            captured["input_type"] = input_type
+            captured["api_key"] = api_key
+
+    monkeypatch.setattr(embedders_mod, "CohereEmbedder", _TrackingCohere)
     settings = CacheSettings.model_validate({"embedder_type": "cohere"})
-    with pytest.raises(NotSupportedEmbedderException):
-        get_embedder(settings)
+    _ = get_embedder(settings)
+    assert captured["model_name"] == embedders_mod.COHERE_DEFAULT_MODEL
+    assert captured["dimensions"] == embedders_mod.COHERE_DEFAULT_DIMENSIONS
+    assert captured["input_type"] == embedders_mod.COHERE_DEFAULT_INPUT_TYPE
+    assert captured["api_key"] is None
 
 
 @pytest.mark.parametrize(
