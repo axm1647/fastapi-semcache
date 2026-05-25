@@ -84,7 +84,9 @@ def test_cache_namespace_contains_model_and_dim(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """``cache_namespace`` encodes backend, model, and dimension."""
-    emb, _, _ = _make_embedder(monkeypatch, model_name="voyage-4-large", dimensions=2048)
+    emb, _, _ = _make_embedder(
+        monkeypatch, model_name="voyage-4-large", dimensions=2048
+    )
     assert emb.cache_namespace == "voyage:voyage-4-large:2048"
 
 
@@ -104,7 +106,9 @@ def test_build_request_body_with_input_type(monkeypatch: pytest.MonkeyPatch) -> 
     assert body["input_type"] == "document"
 
 
-def test_build_request_body_with_output_dimension(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_build_request_body_with_output_dimension(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """``output_dimension`` is included in the body when set."""
     emb, _, _ = _make_embedder(monkeypatch, output_dimension=256)
     body = emb._build_request_body(["text"])
@@ -122,7 +126,9 @@ def test_validate_token_counts_calls_voyageai_tokenize(
 
     emb._validate_token_counts(["hello", "world"], offset=0)
 
-    emb._vo_client.tokenize.assert_called_once_with(["hello", "world"], model="voyage-3")
+    emb._vo_client.tokenize.assert_called_once_with(
+        ["hello", "world"], model="voyage-3"
+    )
 
 
 def test_validate_token_counts_raises_on_encoding_count_mismatch(

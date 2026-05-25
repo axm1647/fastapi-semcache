@@ -15,7 +15,9 @@ from semanticcache.middleware.adapters.fastapi import (
     ResponseValidationContext,
     SemanticCacheMiddleware,
 )
-from semanticcache.middleware.adapters.fastapi.cache_ops import response_allows_cache_store
+from semanticcache.middleware.adapters.fastapi.cache_ops import (
+    response_allows_cache_store,
+)
 from semanticcache.middleware.core.replay import cache_record_from_response
 from semanticcache.types import CacheResult
 

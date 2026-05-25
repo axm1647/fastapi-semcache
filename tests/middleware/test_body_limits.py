@@ -115,9 +115,7 @@ async def test_read_body_drains_then_raises_on_overflow() -> None:
 async def test_call_downstream_returns_502_when_response_exceeds_limit() -> None:
     """Return HTTP 502 when buffered downstream body exceeds the cap."""
 
-    async def huge_app(
-        scope: Scope, receive: Receive, send: Send
-    ) -> None:
+    async def huge_app(scope: Scope, receive: Receive, send: Send) -> None:
         await send(
             {
                 "type": "http.response.start",
@@ -132,9 +130,7 @@ async def test_call_downstream_returns_502_when_response_exceeds_limit() -> None
             {"type": "http.response.body", "body": b"b" * 100, "more_body": False}
         )
 
-    resp = await call_downstream(
-        huge_app, _mini_scope(), b"", max_body_bytes=150
-    )
+    resp = await call_downstream(huge_app, _mini_scope(), b"", max_body_bytes=150)
     assert resp.status_code == 502
     assert b"Bad Gateway" in resp.body
 
@@ -144,9 +140,7 @@ async def test_call_downstream_unlimited_when_max_is_none() -> None:
     """When max_body_bytes is None, the full downstream body is buffered."""
 
     async def app(scope: Scope, receive: Receive, send: Send) -> None:
-        await send(
-            {"type": "http.response.start", "status": 200, "headers": []}
-        )
+        await send({"type": "http.response.start", "status": 200, "headers": []})
         await send(
             {
                 "type": "http.response.body",
@@ -167,9 +161,7 @@ async def test_call_downstream_returns_504_when_timeout_exceeded() -> None:
     async def hung_app(scope: Scope, receive: Receive, send: Send) -> None:
         await asyncio.sleep(10)
 
-    resp = await call_downstream(
-        hung_app, _mini_scope(), b"", timeout_seconds=0.05
-    )
+    resp = await call_downstream(hung_app, _mini_scope(), b"", timeout_seconds=0.05)
     assert resp.status_code == 504
     assert b"Gateway Timeout" in resp.body
 

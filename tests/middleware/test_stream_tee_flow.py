@@ -9,7 +9,10 @@ import pytest
 from starlette.requests import Request
 from starlette.types import Message, Receive, Scope, Send
 
-from semanticcache.middleware.adapters.fastapi.flow import LookupContext, stream_tee_and_store
+from semanticcache.middleware.adapters.fastapi.flow import (
+    LookupContext,
+    stream_tee_and_store,
+)
 
 
 def _scope() -> Scope:
@@ -176,7 +179,9 @@ async def test_stream_tee_and_store_over_limit_skips_cache_put() -> None:
 
 
 @pytest.mark.asyncio
-async def test_stream_tee_and_store_upstream_timeout_sends_504_before_response_start() -> None:
+async def test_stream_tee_and_store_upstream_timeout_sends_504_before_response_start() -> (
+    None
+):
     """When timeout fires before response.start, a 504 is sent to the client."""
 
     async def hung_app(scope: Scope, receive: Receive, send: Send) -> None:
@@ -227,16 +232,22 @@ async def test_stream_tee_and_store_upstream_timeout_sends_504_before_response_s
     assert status == 504
     cache_put.assert_not_awaited()
 
-    start_messages = [m for m in received_messages if m["type"] == "http.response.start"]
+    start_messages = [
+        m for m in received_messages if m["type"] == "http.response.start"
+    ]
     body_messages = [m for m in received_messages if m["type"] == "http.response.body"]
     assert len(start_messages) == 1, "client must receive exactly one response.start"
     assert start_messages[0]["status"] == 504
     assert len(body_messages) >= 1, "client must receive at least one response.body"
-    assert not body_messages[-1].get("more_body", False), "final body chunk must close the stream"
+    assert not body_messages[-1].get(
+        "more_body", False
+    ), "final body chunk must close the stream"
 
 
 @pytest.mark.asyncio
-async def test_stream_tee_and_store_upstream_timeout_mid_stream_closes_connection() -> None:
+async def test_stream_tee_and_store_upstream_timeout_mid_stream_closes_connection() -> (
+    None
+):
     """When timeout fires after response.start, the connection is closed cleanly."""
     started = asyncio.Event()
 
@@ -248,7 +259,9 @@ async def test_stream_tee_and_store_upstream_timeout_mid_stream_closes_connectio
                 "headers": [(b"content-type", b"application/json")],
             }
         )
-        await send({"type": "http.response.body", "body": b'{"part":', "more_body": True})
+        await send(
+            {"type": "http.response.body", "body": b'{"part":', "more_body": True}
+        )
         started.set()
         await asyncio.sleep(10)
 
@@ -297,9 +310,13 @@ async def test_stream_tee_and_store_upstream_timeout_mid_stream_closes_connectio
     assert status == 504
     cache_put.assert_not_awaited()
 
-    start_messages = [m for m in received_messages if m["type"] == "http.response.start"]
+    start_messages = [
+        m for m in received_messages if m["type"] == "http.response.start"
+    ]
     body_messages = [m for m in received_messages if m["type"] == "http.response.body"]
     assert len(start_messages) == 1
     assert start_messages[0]["status"] == 200, "original status was already committed"
     assert len(body_messages) >= 1
-    assert not body_messages[-1].get("more_body", False), "final body chunk must close the stream"
+    assert not body_messages[-1].get(
+        "more_body", False
+    ), "final body chunk must close the stream"

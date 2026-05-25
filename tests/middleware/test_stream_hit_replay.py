@@ -82,8 +82,7 @@ async def test_stream_cache_hit_single_chunk_returns_true() -> None:
     assert start["type"] == "http.response.start"
     assert start["status"] == 200
     header_map = {
-        k.decode("latin-1").lower(): v.decode("latin-1")
-        for k, v in start["headers"]
+        k.decode("latin-1").lower(): v.decode("latin-1") for k, v in start["headers"]
     }
     assert header_map["x-cache"] == "HIT"
     assert "content-length" not in header_map
@@ -192,8 +191,7 @@ async def test_stream_cache_hit_includes_similarity_header() -> None:
 
     start = messages[0]
     header_map = {
-        k.decode("latin-1").lower(): v.decode("latin-1")
-        for k, v in start["headers"]
+        k.decode("latin-1").lower(): v.decode("latin-1") for k, v in start["headers"]
     }
     assert header_map["x-cache-similarity"] == "0.987654"
 
@@ -284,7 +282,9 @@ async def test_stream_cache_hit_strips_sensitive_headers() -> None:
     assert "x-safe" in header_names
 
 
-async def test_stream_cache_hit_chunk_size_equal_to_body_length_is_single_chunk() -> None:
+async def test_stream_cache_hit_chunk_size_equal_to_body_length_is_single_chunk() -> (
+    None
+):
     """chunk_size exactly equal to body byte length produces one chunk."""
     messages: list[Message] = []
 

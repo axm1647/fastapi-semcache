@@ -28,9 +28,7 @@ def test_rejection_threshold_above_primary_no_equality_warning() -> None:
         warnings.simplefilter("always")
         CacheSettings(threshold=0.8, rejection_threshold=0.9)
     equality_warnings = [
-        w
-        for w in record
-        if "rejection_threshold equals threshold" in str(w.message)
+        w for w in record if "rejection_threshold equals threshold" in str(w.message)
     ]
     assert not equality_warnings
 

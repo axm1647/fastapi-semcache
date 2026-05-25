@@ -119,9 +119,7 @@ def test_init_warns_not_for_production_once(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """First construction emits a production-use warning; later ones do not."""
-    monkeypatch.setattr(
-        sbert_mod, "_HUGGINGFACE_PRODUCTION_WARNING_EMITTED", False
-    )
+    monkeypatch.setattr(sbert_mod, "_HUGGINGFACE_PRODUCTION_WARNING_EMITTED", False)
     _patch_require_st(monkeypatch, _FakeSentenceTransformer)
     with pytest.warns(UserWarning, match="not recommended for production"):
         SBERTEmbedder()
@@ -129,9 +127,7 @@ def test_init_warns_not_for_production_once(
         warnings.simplefilter("always")
         SBERTEmbedder()
     repeat_warnings = [
-        w
-        for w in record
-        if "not recommended for production" in str(w.message)
+        w for w in record if "not recommended for production" in str(w.message)
     ]
     assert not repeat_warnings
 

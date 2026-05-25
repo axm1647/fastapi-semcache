@@ -29,6 +29,6 @@ def test_fastapi_semcache_stub_imports_successfully() -> None:
 def test_fastapi_semcache_stub_is_identical_to_semanticcache() -> None:
     """Every public name in the stub must be the identical object from semanticcache."""
     for name in fastapi_semcache.__all__:
-        assert getattr(fastapi_semcache, name) is getattr(semanticcache, name), (
-            f"fastapi_semcache.{name} is not the same object as semanticcache.{name}"
-        )
+        assert getattr(fastapi_semcache, name) is getattr(
+            semanticcache, name
+        ), f"fastapi_semcache.{name} is not the same object as semanticcache.{name}"
