@@ -26,7 +26,7 @@ When a request arrives, the middleware:
 | Cosine / ANN vector similarity | Postgres + pgvector (C, indexed) |
 | Embedding generation | Your provider's API (I/O, not CPU) |
 | Response blob storage and retrieval | Postgres rows or Redis (C clients) |
-| HTTP proxying | `httpx.AsyncClient` (async I/O) |
+| HTTP proxying | `aiohttp.ClientSession` (async I/O, optional `proxy` extra) |
 
 Because all meaningful work is either I/O-bound (GIL released) or executing inside a C extension, Python is never the ceiling even under high concurrency with a single `uvicorn` worker.
 
@@ -44,6 +44,7 @@ pip install fastapi-semcache
 
 | Extra | Installs | Use when |
 |---|---|---|
+| `proxy` | `aiohttp` | `create_semantic_cache_proxy_app` |
 | `embed-openai` | `openai`, `tiktoken` | `embedder_type="openai"` |
 | `embed-voyage` | `voyageai`, `aiohttp` | `embedder_type="voyage"` |
 | `embed-cohere` | `cohere` | `embedder_type="cohere"` |
@@ -95,7 +96,11 @@ By default only `POST` requests are intercepted. Successful responses whose body
 
 ### Reverse proxy
 
-Use `create_semantic_cache_proxy_app` when you want a standalone hop in front of another service rather than importing routes into your FastAPI app:
+Use `create_semantic_cache_proxy_app` when you want a standalone hop in front of another service rather than importing routes into your FastAPI app. Install the **`proxy`** extra first:
+
+```bash
+pip install "fastapi-semcache[proxy]"
+```
 
 ```python
 from semanticcache import SemanticCache, create_semantic_cache_proxy_app

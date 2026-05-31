@@ -17,8 +17,8 @@ The PyPI distribution and GitHub repository are **`fastapi-semcache`**. The impo
 
 `fastapi-semcache` is meant for projects that already use FastAPI and Postgres
 and want semantic response caching without adding a separate vector database.
-The core install adds `fastapi`, `pydantic-settings`, `psycopg` (libpq C
-bindings), and `httpx`.
+The core install adds `fastapi`, `pydantic-settings`, and `psycopg` (libpq C
+bindings). Reverse proxy mode adds `aiohttp` via the optional `proxy` extra.
 
 In the request hot path, Python parses the JSON body, dispatches async I/O, and
 coordinates the result. The heavier work happens elsewhere:
@@ -28,7 +28,7 @@ coordinates the result. The heavier work happens elsewhere:
 | Cosine / ANN vector similarity | Postgres + pgvector (C, indexed) |
 | Embedding generation | Your provider's API (I/O, not CPU) |
 | Response blob storage and retrieval | Postgres rows or Redis (C clients) |
-| HTTP proxying | `httpx.AsyncClient` (async I/O) |
+| HTTP proxying | `aiohttp.ClientSession` (async I/O, optional `proxy` extra) |
 
 Under load, the first things to watch are usually your Postgres connection pool
 and your embedding provider, not Python CPU time in the middleware.
@@ -68,6 +68,7 @@ not need any of the optional embedding extras in that setup. See
 
 Optional extras:
 
+- `proxy`: Reverse proxy upstream HTTP client (`aiohttp`).
 - `redis`: Async Redis client (`redis>=7.4.0`) for TTL-backed response blobs when **`SEMANTIC_CACHE_REDIS_URI`** is set. Core installs omit it so Postgres-only deployments avoid pulling Redis.
 - `embed-huggingface`: Sentence Transformers and PyTorch. Default PyPI wheels are **CPU**; for CUDA, install with PyTorch's `--extra-index-url` ([below](#hugging-face--sentence-transformers)).
 - `embed-openai`: OpenAI embeddings (`openai`, `tiktoken`).
@@ -79,7 +80,7 @@ Notes:
 
 - Core `fastapi-semcache` has no LangChain dependency.
 - Core does **not** include the `redis` PyPI package; use **`pip install "fastapi-semcache[redis]"`** whenever you configure a non-empty Redis URI (otherwise the first Redis use raises `ImportError` with an install hint).
-- Optional extras only add their listed packages (`redis`, `sentence-transformers`/`torch`, `openai`/`tiktoken`, `cohere`, `voyageai`/`aiohttp`, or `openai` alone for `embed-ollama`).
+- Optional extras only add their listed packages (`aiohttp`, `redis`, `sentence-transformers`/`torch`, `openai`/`tiktoken`, `cohere`, `voyageai`/`aiohttp`, or `openai` alone for `embed-ollama`).
 
 ### Hugging Face / Sentence Transformers
 
@@ -311,7 +312,13 @@ See `docs/cache-tuning.md` for concrete tuning tips and examples.
 
 ## Reverse proxy
 
-The reverse proxy mode is optional: it forwards traffic to an upstream base URL while using the same semantic cache middleware. Use it when you want a standalone hop in front of another service rather than importing routes into your FastAPI app.
+The reverse proxy mode is optional: it forwards traffic to an upstream base URL while using the same semantic cache middleware. Install the **`proxy`** extra first:
+
+```bash
+pip install "fastapi-semcache[proxy]"
+```
+
+Use it when you want a standalone hop in front of another service rather than importing routes into your FastAPI app.
 
 Minimal programmatic setup:
 
@@ -335,7 +342,7 @@ If your upstream requires an `Authorization` header (for example OpenAI-compatib
 uv run uvicorn app.main:app --host 0.0.0.0 --port 8080
 ```
 
-See `create_semantic_cache_proxy_app` in `semanticcache.proxy` for timeout, TLS verification, `httpx_client_kwargs`, and middleware options such as `path_prefix` and `extract_query`.
+See `create_semantic_cache_proxy_app` in `semanticcache.proxy` for timeout, TLS verification, `aiohttp_session_kwargs`, and middleware options such as `path_prefix` and `extract_query`.
 
 ## Streaming and chunked responses
 
@@ -361,7 +368,7 @@ Use `hit_stream_chunk_size` (env `SEMANTIC_CACHE_HIT_STREAM_CHUNK_SIZE`, default
 
 ### Reverse proxy note
 
-For `create_semantic_cache_proxy_app`, upstream responses are fetched via `httpx.AsyncClient` using a buffered body, but `response_mode` and `hit_response_mode` control delivery to clients at the ASGI layer in the same way as the middleware.
+For `create_semantic_cache_proxy_app`, upstream responses are fetched via `aiohttp.ClientSession` using a buffered body, but `response_mode` and `hit_response_mode` control delivery to clients at the ASGI layer in the same way as the middleware.
 
 ## Current features
 

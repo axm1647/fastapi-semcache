@@ -43,7 +43,6 @@ classifiers = [
 ]
 dependencies = [
     "fastapi>=0.136.1",
-    "httpx>=0.27.0",
     "psycopg[binary]>=3.3.3",
     "psycopg-pool>=3.3.0",
     "pydantic-settings>=2.14.0",
@@ -51,6 +50,7 @@ dependencies = [
 
 # PyPI serves CPU torch wheels by default. For CUDA, install with PyTorch's index (README).
 [project.optional-dependencies]
+proxy = ["aiohttp>=3.9"]
 redis = ["redis>=7.4.0"]
 embed-huggingface = ["sentence-transformers>=3.0", "torch>=2.1.0"]
 embed-openai = ["openai>=1.40", "tiktoken>=0.7"]
@@ -58,6 +58,8 @@ embed-ollama = ["openai>=1.40"]
 embed-voyage = ["voyageai>=0.3.1", "aiohttp>=3.9"]
 embed-cohere = ["cohere>=5.0"]
 test = [
+    "aiohttp>=3.9",
+    "httpx>=0.27.0",
     "numpy>=1.24",
     "pytest>=8.0",
     "pytest-asyncio>=0.24",

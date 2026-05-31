@@ -385,7 +385,6 @@ version = "0.4.3"
 source = { editable = "." }
 dependencies = [
     { name = "fastapi" },
-    { name = "httpx" },
     { name = "psycopg", extra = ["binary"] },
     { name = "psycopg-pool" },
     { name = "pydantic-settings" },
@@ -410,10 +409,15 @@ embed-voyage = [
     { name = "aiohttp" },
     { name = "voyageai" },
 ]
+proxy = [
+    { name = "aiohttp" },
+]
 redis = [
     { name = "redis" },
 ]
 test = [
+    { name = "aiohttp" },
+    { name = "httpx" },
     { name = "numpy" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
@@ -422,9 +426,11 @@ test = [
 [package.metadata]
 requires-dist = [
     { name = "aiohttp", marker = "extra == 'embed-voyage'", specifier = ">=3.9" },
+    { name = "aiohttp", marker = "extra == 'proxy'", specifier = ">=3.9" },
+    { name = "aiohttp", marker = "extra == 'test'", specifier = ">=3.9" },
     { name = "cohere", marker = "extra == 'embed-cohere'", specifier = ">=5.0" },
     { name = "fastapi", specifier = ">=0.136.1" },
-    { name = "httpx", specifier = ">=0.27.0" },
+    { name = "httpx", marker = "extra == 'test'", specifier = ">=0.27.0" },
     { name = "numpy", marker = "extra == 'test'", specifier = ">=1.24" },
     { name = "openai", marker = "extra == 'embed-ollama'", specifier = ">=1.40" },
     { name = "openai", marker = "extra == 'embed-openai'", specifier = ">=1.40" },
@@ -439,7 +445,7 @@ requires-dist = [
     { name = "torch", marker = "extra == 'embed-huggingface'", specifier = ">=2.1.0" },
     { name = "voyageai", marker = "extra == 'embed-voyage'", specifier = ">=0.3.1" },
 ]
-provides-extras = ["redis", "embed-huggingface", "embed-openai", "embed-ollama", "embed-voyage", "embed-cohere", "test"]
+provides-extras = ["proxy", "redis", "embed-huggingface", "embed-openai", "embed-ollama", "embed-voyage", "embed-cohere", "test"]
 
 [[package]]
 name = "fastavro"

@@ -40,7 +40,7 @@ inner_lifespan = app.router.lifespan_context
 
 @asynccontextmanager
 async def chained_lifespan(application: FastAPI):
-    """Run httpx client startup/shutdown, then close pg/redis on shutdown.
+    """Run aiohttp session startup/shutdown, then close pg/redis on shutdown.
 
     Args:
         application: ASGI application instance from the lifespan scope.

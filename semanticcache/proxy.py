@@ -9,11 +9,12 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping
 from contextlib import asynccontextmanager
+from types import ModuleType
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
 
-import httpx
 from fastapi import FastAPI, Request
 from starlette.responses import Response
 
@@ -51,6 +52,26 @@ _PROXY_METHODS: tuple[str, ...] = (
 )
 
 
+def _require_aiohttp() -> ModuleType:
+    """Import aiohttp or raise with install hint.
+
+    Returns:
+        The aiohttp module.
+
+    Raises:
+        ImportError: If aiohttp is not installed.
+    """
+    try:
+        import aiohttp as _aiohttp
+    except ImportError as exc:
+        msg = (
+            "Reverse proxy mode requires optional dependencies. "
+            "pip install 'fastapi-semcache[proxy]'."
+        )
+        raise ImportError(msg) from exc
+    return _aiohttp
+
+
 def _validate_upstream(url: str) -> str:
     """Normalize and validate an upstream base URL.
 
@@ -84,7 +105,7 @@ def _forward_request_headers(request: Request) -> dict[str, str]:
         request: Incoming ASGI request.
 
     Returns:
-        Header names and values suitable for ``httpx``.
+        Header names and values suitable for the upstream HTTP client.
     """
     out: dict[str, str] = {}
     for key, value in request.headers.items():
@@ -95,7 +116,7 @@ def _forward_request_headers(request: Request) -> dict[str, str]:
     return out
 
 
-def _filter_response_headers(headers: httpx.Headers) -> dict[str, str]:
+def _filter_response_headers(headers: Mapping[str, str]) -> dict[str, str]:
     """Drop hop-by-hop and length headers before returning to the client.
 
     Args:
@@ -117,9 +138,9 @@ def create_semantic_cache_proxy_app(
     *,
     upstream: str,
     cache: SemanticCache,
-    timeout: float | httpx.Timeout = 300.0,
+    timeout: float | Any = 300.0,
     verify: bool = True,
-    httpx_client_kwargs: dict[str, Any] | None = None,
+    aiohttp_session_kwargs: dict[str, Any] | None = None,
     **middleware_kwargs: Any,
 ) -> FastAPI:
     """Build a FastAPI app that proxies to ``upstream`` behind ``SemanticCacheMiddleware``.
@@ -133,15 +154,18 @@ def create_semantic_cache_proxy_app(
     OpenAPI and interactive docs URLs honor ``disable_proxy_app_docs`` from
     ``get_cache_settings()`` at call time (not at import time).
 
+    Requires the ``proxy`` optional extra (``aiohttp``).
+
     Args:
         upstream: Base URL for the backend (for example ``http://127.0.0.1:8001`` or
             ``https://api.example.com/v1``). No trailing slash required.
         cache: Configured ``SemanticCache`` instance.
-        timeout: Per-request timeout for upstream calls (seconds) or an ``httpx``
-            timeout object.
+        timeout: Per-request timeout for upstream calls (seconds) or an ``aiohttp``
+            ``ClientTimeout`` object.
         verify: Whether to verify TLS certificates when ``upstream`` uses HTTPS.
-        httpx_client_kwargs: Extra keyword arguments merged into ``httpx.AsyncClient``
-            (for example ``transport`` for tests or custom TLS settings).
+        aiohttp_session_kwargs: Extra keyword arguments merged into
+            ``aiohttp.ClientSession`` (for example a custom ``connector`` for tests
+            or TLS settings).
         **middleware_kwargs: Forwarded to ``SemanticCacheMiddleware`` (``enabled``,
             ``path_prefix``, ``methods``, ``extract_query``, ``extract_model``,
             ``model_header_name``, ``validate_response``, ``cache_settings``,
@@ -154,15 +178,18 @@ def create_semantic_cache_proxy_app(
 
     Raises:
         ValueError: If ``upstream`` is not a valid HTTP(S) URL with a host.
+        ImportError: If the ``proxy`` extra (``aiohttp``) is not installed.
     """
+    aiohttp = _require_aiohttp()
     base = _validate_upstream(upstream)
-    http_timeout = (
-        timeout if isinstance(timeout, httpx.Timeout) else httpx.Timeout(timeout)
-    )
+    if isinstance(timeout, (int, float)):
+        http_timeout = aiohttp.ClientTimeout(total=timeout)
+    else:
+        http_timeout = timeout
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        """Hold a shared ``httpx.AsyncClient`` for the proxy lifetime.
+        """Hold a shared ``aiohttp.ClientSession`` for the proxy lifetime.
 
         Args:
             app: FastAPI application.
@@ -170,15 +197,17 @@ def create_semantic_cache_proxy_app(
         Yields:
             Control after startup and before shutdown.
         """
-        extra = httpx_client_kwargs or {}
-        merged: dict[str, Any] = {
+        extra = dict(aiohttp_session_kwargs or {})
+        session_timeout = extra.pop("timeout", http_timeout)
+        connector = extra.pop("connector", None)
+        if connector is None:
+            connector = aiohttp.TCPConnector(ssl=verify)
+        async with aiohttp.ClientSession(
+            timeout=session_timeout,
+            connector=connector,
             **extra,
-            "follow_redirects": False,
-            "timeout": http_timeout,
-            "verify": verify,
-        }
-        async with httpx.AsyncClient(**merged) as client:
-            app.state.proxy_http_client = client
+        ) as session:
+            app.state.proxy_http_client = session
             app.state.proxy_upstream_base = base
             yield
 
@@ -211,7 +240,7 @@ def create_semantic_cache_proxy_app(
         Returns:
             Proxied HTTP response.
         """
-        client: httpx.AsyncClient = request.app.state.proxy_http_client
+        client = request.app.state.proxy_http_client
         upstream_base: str = request.app.state.proxy_upstream_base
         path_component = f"/{full_path}" if full_path else "/"
         target = f"{upstream_base}{path_component}"
@@ -222,13 +251,17 @@ def create_semantic_cache_proxy_app(
         req_headers = _forward_request_headers(request)
 
         try:
-            upstream_resp = await client.request(
+            async with client.request(
                 request.method,
                 target,
-                content=body if body else None,
+                data=body if body else None,
                 headers=req_headers,
-            )
-        except httpx.RequestError as exc:
+                allow_redirects=False,
+            ) as upstream_resp:
+                content = await upstream_resp.read()
+                status = upstream_resp.status
+                resp_headers = _filter_response_headers(upstream_resp.headers)
+        except aiohttp.ClientError as exc:
             _logger.warning(
                 "Upstream request failed (%s %s): %s",
                 request.method,
@@ -242,10 +275,9 @@ def create_semantic_cache_proxy_app(
                 media_type="text/plain; charset=utf-8",
             )
 
-        resp_headers = _filter_response_headers(upstream_resp.headers)
         return Response(
-            content=upstream_resp.content,
-            status_code=upstream_resp.status_code,
+            content=content,
+            status_code=status,
             headers=resp_headers,
         )
 

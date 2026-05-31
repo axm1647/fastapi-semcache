@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from typing import cast
+from unittest.mock import AsyncMock
+from urllib.parse import urlparse
 
-import httpx
+import aiohttp
 import pytest
 from fastapi import FastAPI
 from starlette.testclient import TestClient
@@ -40,6 +42,40 @@ class _MissCache:
         _ = query, response, model, scope, storage_scope_key
 
 
+class _FakeUpstreamResponse:
+    """Minimal aiohttp response stand-in for proxy forwarding tests."""
+
+    status = 200
+    headers: dict[str, str] = {}
+
+    async def read(self) -> bytes:
+        return b'{"proxied": true}'
+
+    async def __aenter__(self) -> _FakeUpstreamResponse:
+        return self
+
+    async def __aexit__(self, *args: object) -> None:
+        return None
+
+
+class _FakeClientSession:
+    """Record upstream requests and return a canned JSON response."""
+
+    def __init__(self, captured: dict[str, str]) -> None:
+        self._captured = captured
+
+    async def __aenter__(self) -> _FakeClientSession:
+        return self
+
+    async def __aexit__(self, *args: object) -> None:
+        return None
+
+    def request(self, method: str, url: str, **kwargs: object) -> _FakeUpstreamResponse:
+        _ = method, kwargs
+        self._captured["url"] = url
+        return _FakeUpstreamResponse()
+
+
 def test_create_proxy_rejects_invalid_upstream() -> None:
     """Invalid upstream URLs raise before the ASGI app is usable."""
     with pytest.raises(ValueError, match="upstream"):
@@ -51,29 +87,31 @@ def test_create_proxy_rejects_invalid_upstream() -> None:
 
 
 @pytest.mark.parametrize(
-    ("method", "path", "expected_suffix"),
+    ("method", "path", "expected_path"),
     [
-        ("GET", "status", "http://upstream.local/status"),
-        ("POST", "v1/chat", "http://upstream.local/v1/chat"),
+        ("GET", "status", "/status"),
+        ("POST", "v1/chat", "/v1/chat"),
     ],
 )
 def test_proxy_forwards_to_upstream(
+    monkeypatch: pytest.MonkeyPatch,
     method: str,
     path: str,
-    expected_suffix: str,
+    expected_path: str,
 ) -> None:
     """The catch-all route joins the configured upstream with the request path."""
-    captured: dict[str, object] = {}
+    captured: dict[str, str] = {}
 
-    def handler(request: httpx.Request) -> httpx.Response:
-        captured["url"] = str(request.url)
-        return httpx.Response(200, json={"proxied": True})
+    def fake_client_session(**kwargs: object) -> _FakeClientSession:
+        _ = kwargs
+        return _FakeClientSession(captured)
 
-    transport = httpx.MockTransport(handler)
+    monkeypatch.setattr(aiohttp, "ClientSession", fake_client_session)
+    monkeypatch.setattr(aiohttp, "TCPConnector", lambda **kwargs: AsyncMock())
+
     app = create_semantic_cache_proxy_app(
         upstream="http://upstream.local",
         cache=cast(SemanticCache, _MissCache()),
-        httpx_client_kwargs={"transport": transport},
         enabled=False,
     )
     url_path = f"/{path}" if not path.startswith("/") else path
@@ -81,11 +119,16 @@ def test_proxy_forwards_to_upstream(
         r = client.request(method, url_path)
     assert r.status_code == 200
     assert r.json() == {"proxied": True}
-    assert captured["url"] == expected_suffix
+    assert urlparse(captured["url"]).path == expected_path
 
 
-def test_proxy_app_includes_lifespan_client() -> None:
+def test_proxy_app_includes_lifespan_client(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Startup wires ``proxy_http_client`` and ``proxy_upstream_base`` on state."""
+    monkeypatch.setattr(aiohttp, "ClientSession", lambda **kwargs: _FakeClientSession({}))
+    monkeypatch.setattr(aiohttp, "TCPConnector", lambda **kwargs: AsyncMock())
+
     app = create_semantic_cache_proxy_app(
         upstream="http://127.0.0.1:1",
         cache=cast(SemanticCache, _MissCache()),
