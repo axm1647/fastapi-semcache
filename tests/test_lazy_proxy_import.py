@@ -33,18 +33,18 @@ def _block_fastapi_import(
 _ORIGINAL_IMPORT = builtins.__import__
 
 
+_LAZY_PROXY_MODULES: tuple[str, ...] = (
+    "semanticcache",
+    "semanticcache.proxy",
+    "fastapi_semcache",
+)
+
+
 @pytest.fixture
 def isolated_semanticcache(monkeypatch: pytest.MonkeyPatch) -> _ReloadedSemanticCache:
-    """Reload ``semanticcache`` after clearing cached submodules."""
+    """Reload package entrypoints without invalidating other ``semanticcache`` submodules."""
     modules_before = set(sys.modules)
-    to_drop = [
-        name
-        for name in list(sys.modules)
-        if name == "semanticcache"
-        or name == "fastapi_semcache"
-        or name.startswith("semanticcache.")
-    ]
-    for name in to_drop:
+    for name in _LAZY_PROXY_MODULES:
         sys.modules.pop(name, None)
     sys.modules.pop("fastapi", None)
     monkeypatch.setattr(builtins, "__import__", _block_fastapi_import)
