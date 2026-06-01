@@ -47,3 +47,25 @@ class CacheTimeoutError(TimeoutError):
         )
         self.operation = operation
         self.timeout_seconds = timeout_seconds
+
+
+class FlightLockAcquisitionTimeoutError(TimeoutError):
+    """Raised when waiting for a middleware flight lock exceeds the budget."""
+
+    def __init__(
+        self,
+        *,
+        timeout_seconds: float,
+        key: tuple[str, str | None, str],
+    ) -> None:
+        """Initialize timeout metadata for logs and callers.
+
+        Args:
+            timeout_seconds: Applied acquisition timeout in seconds.
+            key: Flight registry key ``(query, model, scope_storage)``.
+        """
+        super().__init__(
+            f"flight lock acquisition timed out after {timeout_seconds:.3f}s"
+        )
+        self.timeout_seconds = timeout_seconds
+        self.key = key

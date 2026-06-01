@@ -13,7 +13,9 @@ from fastapi import FastAPI
 
 from semanticcache.cache import SemanticCache
 from semanticcache.config import CacheSettings
+from semanticcache.exceptions import FlightLockAcquisitionTimeoutError
 from semanticcache.middleware.adapters.fastapi import SemanticCacheMiddleware
+from semanticcache.middleware.core.coordination import MiddlewareCoordination
 
 
 def _make_middleware(*, max_entries: int) -> SemanticCacheMiddleware:
@@ -161,3 +163,46 @@ async def test_flight_lock_shared_lock_not_removed_while_second_waiter_holds() -
     flight2._lock.release()
     async with middleware._coordination._flight_lock_registry:
         middleware._coordination._flight_locks.pop(("q1", "m", ""), None)
+
+
+@pytest.mark.asyncio
+async def test_flight_lock_acquire_times_out_when_holder_is_slow() -> None:
+    """Raise when lock acquisition exceeds the configured budget."""
+    coordination = MiddlewareCoordination(
+        flight_lock_max_entries=4,
+        flight_lock_acquire_timeout_seconds=0.05,
+        circuit_breaker_enabled=False,
+        circuit_breaker_limit=5,
+        circuit_breaker_open_seconds=60.0,
+    )
+    flight1 = await coordination.get_flight_lock("q1", "m", "")
+    async with flight1:
+        flight2 = await coordination.get_flight_lock("q1", "m", "")
+        with pytest.raises(FlightLockAcquisitionTimeoutError) as exc_info:
+            async with flight2:
+                pass
+        assert exc_info.value.timeout_seconds == 0.05
+        assert exc_info.value.key == ("q1", "m", "")
+
+
+@pytest.mark.asyncio
+async def test_flight_lock_acquire_succeeds_when_lock_released_in_time() -> None:
+    """Acquire the lock when the holder releases before the timeout."""
+    import asyncio
+
+    coordination = MiddlewareCoordination(
+        flight_lock_max_entries=4,
+        flight_lock_acquire_timeout_seconds=1.0,
+        circuit_breaker_enabled=False,
+        circuit_breaker_limit=5,
+        circuit_breaker_open_seconds=60.0,
+    )
+    flight1 = await coordination.get_flight_lock("q1", "m", "")
+    await flight1._lock.acquire()
+    flight2 = await coordination.get_flight_lock("q1", "m", "")
+    acquire_task = asyncio.create_task(flight2.__aenter__())
+    await asyncio.sleep(0.01)
+    flight1._lock.release()
+    entered = await acquire_task
+    assert entered is flight2
+    await flight2.__aexit__(None, None, None)

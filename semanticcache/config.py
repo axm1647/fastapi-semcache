@@ -302,6 +302,16 @@ class CacheSettings(BaseSettings):
             "coordinating concurrent misses. Oldest unlocked entries are evicted."
         ),
     )
+    middleware_flight_lock_acquire_timeout_seconds: float | None = Field(
+        default=None,
+        gt=0.0,
+        description=(
+            "Maximum seconds a request may wait to acquire the per-key flight lock "
+            "before proceeding without deduplication. Unset (null/empty) waits "
+            "indefinitely. Should exceed expected embed, store, and upstream duration "
+            "for one coordinated miss."
+        ),
+    )
     require_cache_scope: bool = Field(
         False,
         description=(

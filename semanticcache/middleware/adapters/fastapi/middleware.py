@@ -18,6 +18,7 @@ from starlette.responses import PlainTextResponse, Response
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from ....cache import SemanticCache
+from ....exceptions import FlightLockAcquisitionTimeoutError
 from ....types import CacheResult
 from .asgi_io import (
     DEFAULT_MAX_BODY_BYTES,
@@ -235,6 +236,9 @@ class SemanticCacheMiddleware:
             self._log_digest_key = resolved.log_digest_key
         self._coordination = MiddlewareCoordination(
             flight_lock_max_entries=resolved.middleware_flight_lock_max_entries,
+            flight_lock_acquire_timeout_seconds=(
+                resolved.middleware_flight_lock_acquire_timeout_seconds
+            ),
             circuit_breaker_enabled=resolved.circuit_breaker_429_enabled,
             circuit_breaker_limit=resolved.circuit_breaker_429_consecutive_limit,
             circuit_breaker_open_seconds=resolved.circuit_breaker_429_open_seconds,
@@ -624,8 +628,8 @@ class SemanticCacheMiddleware:
         ):
             return
 
-        flight = await self._coordination.get_flight_lock(query, model, scope_storage)
-        async with flight:
+        async def _handle_coordinated_miss() -> None:
+            nonlocal cache_read_error, result
             result, inner_err = await _do_cache_get(
                 query, model, scope_storage, phase="double_check", raw_scope=raw_scope
             )
@@ -727,4 +731,16 @@ class SemanticCacheMiddleware:
             )
 
             await send_response(final, scope, send)
-            return
+
+        flight = await self._coordination.get_flight_lock(query, model, scope_storage)
+        try:
+            async with flight:
+                await _handle_coordinated_miss()
+        except FlightLockAcquisitionTimeoutError as exc:
+            _logger.warning(
+                "Flight lock acquisition timed out after %.3fs for key=%r; "
+                "proceeding without deduplication",
+                exc.timeout_seconds,
+                exc.key,
+            )
+            await _handle_coordinated_miss()

@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 [Unreleased]
 
+### Added
+
+- **`CacheSettings.middleware_flight_lock_acquire_timeout_seconds`**
+  (`SEMANTIC_CACHE_MIDDLEWARE_FLIGHT_LOCK_ACQUIRE_TIMEOUT_SECONDS`): optional cap on
+  how long a request may wait to acquire the per-key flight lock. On timeout the
+  middleware logs a warning and proceeds without deduplication (fail open).
+
 ### Changed
 
 - **Reverse proxy**: upstream HTTP calls now use **`aiohttp.ClientSession`** instead of **`httpx`**. Install with **`fastapi-semcache[proxy]`** (`aiohttp>=3.9`). **`httpx`** is no longer a core dependency.

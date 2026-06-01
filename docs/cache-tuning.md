@@ -290,12 +290,14 @@ tie up worker capacity. `SemanticCache` supports fail-fast timeout controls:
 - **`SEMANTIC_CACHE_UPSTREAM_TIMEOUT_SECONDS`**
   (`CacheSettings.upstream_timeout_seconds`):
   timeout budget in seconds for the upstream ASGI call. Applies in both
-  `response_mode='buffered'` and `response_mode='tee'`. A slow or hung
-  upstream holds the per-key flight lock open for its full duration,
-  blocking all waiters for that key. Setting this cap bounds how long the
-  lock is held: when the budget expires, the middleware cancels the upstream
-  call, releases the flight lock, logs a warning, and returns
-  **HTTP 504** to the client. Defaults to `None` (no cap).
+  `response_mode='buffered'` and `response_mode='tee'`.   A slow or hung upstream holds the per-key flight lock open for its full
+  duration, blocking all waiters for that key until the holder releases it.
+  Setting this cap bounds how long the holder runs upstream work: when the
+  budget expires, the middleware cancels the upstream call, releases the flight
+  lock, logs a warning, and returns **HTTP 504** to the client. Waiters still
+  block on lock acquisition for the full holder duration unless
+  `middleware_flight_lock_acquire_timeout_seconds` is also set. Defaults to
+  `None` (no cap).
 
   In `tee` mode the timeout is handled in two ways depending on how far the
   stream has progressed. If the upstream has not yet sent `http.response.start`,
@@ -336,7 +338,16 @@ never complete), the registry is bounded:
   limit is exceeded, the middleware evicts least-recently-used **unlocked** lock
   entries. Locks currently coordinating active requests are never evicted.
 
-Default is `4096`. **Saturated registry:** when every retained lock is held and a
+- **`SEMANTIC_CACHE_MIDDLEWARE_FLIGHT_LOCK_ACQUIRE_TIMEOUT_SECONDS`**
+  (`CacheSettings.middleware_flight_lock_acquire_timeout_seconds`):
+  maximum seconds a request may block waiting to acquire the per-key flight lock.
+  When exceeded, the middleware logs a warning and proceeds without deduplication
+  (fail open), so waiters are not held indefinitely while another flight runs a
+  slow embed, store, or upstream call. Unset (null/empty) waits indefinitely.
+  Set this above the expected duration of one coordinated miss (embed + store +
+  upstream budgets combined).
+
+Default is `4096` for max entries. **Saturated registry:** when every retained lock is held and a
 new distinct key is inserted, LRU eviction drops that new key’s table entry
 immediately (the new lock is the last unlocked slot in traversal order, since it
 was just appended and all older entries are still held). The caller still holds the

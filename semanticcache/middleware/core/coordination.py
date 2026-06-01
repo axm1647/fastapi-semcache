@@ -8,6 +8,8 @@ import time
 from collections import OrderedDict
 from types import TracebackType
 
+from semanticcache.exceptions import FlightLockAcquisitionTimeoutError
+
 _logger = logging.getLogger(__name__)
 
 
@@ -21,7 +23,14 @@ class _FlightLock:
         _registry_guard: Mutex protecting the registry.
     """
 
-    __slots__ = ("_lock", "_key", "_registry", "_registry_guard")
+    __slots__ = (
+        "_lock",
+        "_key",
+        "_registry",
+        "_registry_guard",
+        "_acquire_timeout_seconds",
+        "_acquired",
+    )
 
     def __init__(
         self,
@@ -29,6 +38,8 @@ class _FlightLock:
         key: tuple[str, str | None, str],
         registry: OrderedDict[tuple[str, str | None, str], asyncio.Lock],
         registry_guard: asyncio.Lock,
+        *,
+        acquire_timeout_seconds: float | None,
     ) -> None:
         """Store the lock and its registry coordinates.
 
@@ -37,15 +48,32 @@ class _FlightLock:
             key: Registry key tuple ``(query, model, scope_storage)``.
             registry: Shared flight-lock ordered dict to clean up from.
             registry_guard: Mutex that protects the registry dict.
+            acquire_timeout_seconds: Max seconds to wait for ``lock.acquire()``;
+                or ``None`` to wait indefinitely.
         """
         self._lock = lock
         self._key = key
         self._registry = registry
         self._registry_guard = registry_guard
+        self._acquire_timeout_seconds = acquire_timeout_seconds
+        self._acquired = False
 
     async def __aenter__(self) -> "_FlightLock":
-        """Acquire the underlying lock."""
-        await self._lock.acquire()
+        """Acquire the underlying lock, optionally bounded by a timeout."""
+        if self._acquire_timeout_seconds is None:
+            await self._lock.acquire()
+        else:
+            try:
+                await asyncio.wait_for(
+                    self._lock.acquire(),
+                    timeout=self._acquire_timeout_seconds,
+                )
+            except asyncio.TimeoutError as exc:
+                raise FlightLockAcquisitionTimeoutError(
+                    timeout_seconds=self._acquire_timeout_seconds,
+                    key=self._key,
+                ) from exc
+        self._acquired = True
         return self
 
     async def __aexit__(
@@ -55,6 +83,9 @@ class _FlightLock:
         exc_tb: TracebackType | None,
     ) -> None:
         """Release the lock and remove the registry entry."""
+        if not self._acquired:
+            return
+        self._acquired = False
         self._lock.release()
         async with self._registry_guard:
             registered = self._registry.get(self._key)
@@ -69,6 +100,7 @@ class MiddlewareCoordination:
         self,
         *,
         flight_lock_max_entries: int,
+        flight_lock_acquire_timeout_seconds: float | None,
         circuit_breaker_enabled: bool,
         circuit_breaker_limit: int,
         circuit_breaker_open_seconds: float,
@@ -77,6 +109,8 @@ class MiddlewareCoordination:
 
         Args:
             flight_lock_max_entries: Maximum retained lock keys.
+            flight_lock_acquire_timeout_seconds: Max seconds a waiter may block on
+                ``lock.acquire()``; ``None`` waits indefinitely.
             circuit_breaker_enabled: Whether 429 circuit logic is active.
             circuit_breaker_limit: Consecutive 429s required to open circuit.
             circuit_breaker_open_seconds: Circuit cooldown duration in seconds.
@@ -86,6 +120,7 @@ class MiddlewareCoordination:
             OrderedDict()
         )
         self._flight_lock_max_entries = max(1, flight_lock_max_entries)
+        self._flight_lock_acquire_timeout_seconds = flight_lock_acquire_timeout_seconds
 
         self._circuit_breaker_enabled = circuit_breaker_enabled
         self._circuit_breaker_limit = circuit_breaker_limit
@@ -136,7 +171,11 @@ class MiddlewareCoordination:
             if lock is not None:
                 self._flight_locks.move_to_end(key)
                 return _FlightLock(
-                    lock, key, self._flight_locks, self._flight_lock_registry
+                    lock,
+                    key,
+                    self._flight_locks,
+                    self._flight_lock_registry,
+                    acquire_timeout_seconds=self._flight_lock_acquire_timeout_seconds,
                 )
             lock = asyncio.Lock()
             self._flight_locks[key] = lock
@@ -150,7 +189,11 @@ class MiddlewareCoordination:
                     self._flight_lock_max_entries,
                 )
             return _FlightLock(
-                lock, key, self._flight_locks, self._flight_lock_registry
+                lock,
+                key,
+                self._flight_locks,
+                self._flight_lock_registry,
+                acquire_timeout_seconds=self._flight_lock_acquire_timeout_seconds,
             )
 
     async def upstream_blocked_by_circuit(self) -> bool:
