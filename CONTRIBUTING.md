@@ -30,6 +30,8 @@ Run the default unit suite (integration tests are excluded):
 uv run pytest
 ```
 
+Tests clear ``SEMANTIC_CACHE_*`` (and related API-key aliases) from the environment automatically so a loaded ``.env`` does not affect ``CacheSettings`` construction. You do not need to unset those variables manually before running pytest.
+
 Some tests live under `tests/embedders/test_sbert_integration.py` and are marked **`integration`**. They import **`sentence_transformers`** and need a cached or downloadable Hugging Face model. If that package is not installed, pytest skips that file entirely. Default `pytest` excludes the `integration` marker via `pyproject.toml` so offline or proxy-restricted environments still pass.
 
 To run integration tests after installing an embedding extra (for example CPU Sentence Transformers):
