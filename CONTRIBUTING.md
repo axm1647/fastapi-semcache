@@ -24,13 +24,13 @@ To exercise semantic caching against Postgres and Redis locally, copy `.env.exam
 
 ## Running tests
 
-Run the full suite:
+Run the default unit suite (integration tests are excluded):
 
 ```bash
 uv run pytest
 ```
 
-Some tests live under `tests/embedders/test_sbert_integration.py` and are marked **`integration`**. They import **`sentence_transformers`** and may download a small model on first run. If that package is not installed, pytest skips that file entirely.
+Some tests live under `tests/embedders/test_sbert_integration.py` and are marked **`integration`**. They import **`sentence_transformers`** and need a cached or downloadable Hugging Face model. If that package is not installed, pytest skips that file entirely. Default `pytest` excludes the `integration` marker via `pyproject.toml` so offline or proxy-restricted environments still pass.
 
 To run integration tests after installing an embedding extra (for example CPU Sentence Transformers):
 
@@ -39,10 +39,10 @@ uv sync --extra embed-huggingface --extra test
 uv run pytest -m integration
 ```
 
-To exclude integration tests when you have heavy extras installed:
+To run every test including integration in one command:
 
 ```bash
-uv run pytest -m "not integration"
+uv run pytest -o addopts=
 ```
 
 ## Type checking
