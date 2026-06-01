@@ -1,6 +1,6 @@
 # Custom embedders and minimal installs
 
-The PyPI package **`fastapi-semcache`** installs core runtime dependencies only (FastAPI, HTTPX, Postgres, settings). Optional extras such as `embed-openai`, `embed-cohere`, `embed-voyage`, `embed-ollama`, `embed-huggingface` and `redis` pull in vendor-specific stacks.
+The PyPI package **`fastapi-semcache`** installs core runtime dependencies only (Starlette, Postgres via `psycopg`, `pydantic-settings`). Optional extras such as `proxy`, `embed-openai`, `embed-cohere`, `embed-voyage`, `embed-ollama`, `embed-huggingface` and `redis` pull in vendor-specific stacks. FastAPI apps should already declare **`fastapi`** in their own project; the **`proxy`** extra installs **`fastapi`** for **`create_semantic_cache_proxy_app`**.
 
 If you want to avoid those stacks, or you already host embeddings elsewhere, implement a small class against **`BaseEmbedder`** and pass it into **`SemanticCache(embedder=...)`**. No embedding extra is required for that path.
 
@@ -78,7 +78,7 @@ When you use the built-in Hugging Face backend through **`get_embedder(settings)
 
 ## Example: HTTP example API with HTTPX
 
-**HTTPX** is already a core dependency. The snippet below assumes your service accepts `POST /embed` with body `{"texts": ["...", ...]}` and returns JSON like `{"vectors": [[float, ...], ...]}`. Rename paths and keys to match your API.
+Install **`httpx`** in your app (or add it to your project dependencies) if you use this pattern. The snippet below assumes your service accepts `POST /embed` with body `{"texts": ["...", ...]}` and returns JSON like `{"vectors": [[float, ...], ...]}`. Rename paths and keys to match your API.
 
 ```python
 from typing import override

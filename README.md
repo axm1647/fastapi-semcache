@@ -17,8 +17,11 @@ The PyPI distribution and GitHub repository are **`fastapi-semcache`**. The impo
 
 `fastapi-semcache` is meant for projects that already use FastAPI and Postgres
 and want semantic response caching without adding a separate vector database.
-The core install adds `fastapi`, `pydantic-settings`, and `psycopg` (libpq C
-bindings). Reverse proxy mode adds `aiohttp` via the optional `proxy` extra.
+The core install adds `starlette`, `pydantic-settings`, and `psycopg` (libpq C
+bindings). Your app should already depend on `fastapi` when you use a
+`FastAPI()` instance; the middleware itself is Starlette/ASGI middleware.
+Reverse proxy mode installs `fastapi` and `aiohttp` via the optional `proxy`
+extra.
 
 In the request hot path, Python parses the JSON body, dispatches async I/O, and
 coordinates the result. The heavier work happens elsewhere:
@@ -68,7 +71,7 @@ not need any of the optional embedding extras in that setup. See
 
 Optional extras:
 
-- `proxy`: Reverse proxy upstream HTTP client (`aiohttp`).
+- `proxy`: Reverse proxy app factory (`fastapi`, `aiohttp` for upstream HTTP).
 - `redis`: Async Redis client (`redis>=7.4.0`) for TTL-backed response blobs when **`SEMANTIC_CACHE_REDIS_URI`** is set. Core installs omit it so Postgres-only deployments avoid pulling Redis.
 - `embed-huggingface`: Sentence Transformers and PyTorch. Default PyPI wheels are **CPU**; for CUDA, install with PyTorch's `--extra-index-url` ([below](#hugging-face--sentence-transformers)).
 - `embed-openai`: OpenAI embeddings (`openai`, `tiktoken`).
@@ -79,8 +82,9 @@ Optional extras:
 Notes:
 
 - Core `fastapi-semcache` has no LangChain dependency.
+- Core does **not** include the `fastapi` PyPI package; declare **`fastapi`** in your own app when you use **`FastAPI()`**. The **`proxy`** extra installs **`fastapi`** for **`create_semantic_cache_proxy_app`**.
 - Core does **not** include the `redis` PyPI package; use **`pip install "fastapi-semcache[redis]"`** whenever you configure a non-empty Redis URI (otherwise the first Redis use raises `ImportError` with an install hint).
-- Optional extras only add their listed packages (`aiohttp`, `redis`, `sentence-transformers`/`torch`, `openai`/`tiktoken`, `cohere`, `voyageai`/`aiohttp`, or `openai` alone for `embed-ollama`).
+- Optional extras only add their listed packages (`fastapi`/`aiohttp` for `proxy`, `redis`, `sentence-transformers`/`torch`, `openai`/`tiktoken`, `cohere`, `voyageai`/`aiohttp`, or `openai` alone for `embed-ollama`).
 
 ### Hugging Face / Sentence Transformers
 
@@ -312,7 +316,7 @@ See `docs/cache-tuning.md` for concrete tuning tips and examples.
 
 ## Reverse proxy
 
-The reverse proxy mode is optional: it forwards traffic to an upstream base URL while using the same semantic cache middleware. Install the **`proxy`** extra first:
+The reverse proxy mode is optional: it forwards traffic to an upstream base URL while using the same semantic cache middleware. Install the **`proxy`** extra first (pulls **`fastapi`** and **`aiohttp`**):
 
 ```bash
 pip install "fastapi-semcache[proxy]"

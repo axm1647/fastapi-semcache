@@ -44,13 +44,15 @@ pip install fastapi-semcache
 
 | Extra | Installs | Use when |
 |---|---|---|
-| `proxy` | `aiohttp` | `create_semantic_cache_proxy_app` |
+| `proxy` | `fastapi`, `aiohttp` | `create_semantic_cache_proxy_app` |
 | `embed-openai` | `openai`, `tiktoken` | `embedder_type="openai"` |
 | `embed-voyage` | `voyageai`, `aiohttp` | `embedder_type="voyage"` |
 | `embed-cohere` | `cohere` | `embedder_type="cohere"` |
 | `embed-huggingface` | `sentence-transformers`, `torch` | `embedder_type="huggingface"` |
 | `embed-ollama` | `openai` | `embedder_type="ollama"` |
 | `redis` | `redis` | `SEMANTIC_CACHE_REDIS_URI` is set |
+
+The core wheel installs **Starlette**, **psycopg**, and **pydantic-settings** only. Declare **`fastapi`** in your own project for **`FastAPI()`** apps; the middleware is Starlette/ASGI middleware. **`fastapi`** is pulled in by the **`proxy`** extra for reverse proxy mode.
 
 Extras can be combined:
 
@@ -96,7 +98,7 @@ By default only `POST` requests are intercepted. Successful responses whose body
 
 ### Reverse proxy
 
-Use `create_semantic_cache_proxy_app` when you want a standalone hop in front of another service rather than importing routes into your FastAPI app. Install the **`proxy`** extra first:
+Use `create_semantic_cache_proxy_app` when you want a standalone hop in front of another service rather than importing routes into your FastAPI app. Install the **`proxy`** extra first (installs **`fastapi`** and **`aiohttp`**):
 
 ```bash
 pip install "fastapi-semcache[proxy]"
