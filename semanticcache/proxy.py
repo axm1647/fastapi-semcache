@@ -15,7 +15,7 @@ from types import ModuleType
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
 
-from fastapi import FastAPI, Request
+from starlette.requests import Request
 from starlette.responses import Response
 
 from .cache import SemanticCache
@@ -23,7 +23,14 @@ from .config import get_cache_settings
 from .middleware.adapters.fastapi import SemanticCacheMiddleware
 
 if TYPE_CHECKING:
+    from aiohttp import ClientTimeout
+    from fastapi import FastAPI
+
     from .config import CacheSettings
+
+    _TimeoutArg = float | ClientTimeout
+else:
+    _TimeoutArg = float
 
 
 _logger = logging.getLogger(__name__)
@@ -70,6 +77,26 @@ def _require_aiohttp() -> ModuleType:
         )
         raise ImportError(msg) from exc
     return _aiohttp
+
+
+def _require_fastapi() -> type[FastAPI]:
+    """Import FastAPI or raise with install hint.
+
+    Returns:
+        The FastAPI application class.
+
+    Raises:
+        ImportError: If FastAPI is not installed.
+    """
+    try:
+        from fastapi import FastAPI as _FastAPI
+    except ImportError as exc:
+        msg = (
+            "Reverse proxy mode requires optional dependencies. "
+            "pip install 'fastapi-semcache[proxy]'."
+        )
+        raise ImportError(msg) from exc
+    return _FastAPI
 
 
 def _validate_upstream(url: str) -> str:
@@ -138,9 +165,9 @@ def create_semantic_cache_proxy_app(
     *,
     upstream: str,
     cache: SemanticCache,
-    timeout: float | Any = 300.0,
+    timeout: _TimeoutArg = 300.0,
     verify: bool = True,
-    aiohttp_session_kwargs: dict[str, Any] | None = None,
+    aiohttp_session_kwargs: dict[str, object] | None = None,
     **middleware_kwargs: Any,
 ) -> FastAPI:
     """Build a FastAPI app that proxies to ``upstream`` behind ``SemanticCacheMiddleware``.
@@ -154,14 +181,14 @@ def create_semantic_cache_proxy_app(
     OpenAPI and interactive docs URLs honor ``disable_proxy_app_docs`` from
     ``get_cache_settings()`` at call time (not at import time).
 
-    Requires the ``proxy`` optional extra (``aiohttp``).
+    Requires the ``proxy`` optional extra (``fastapi`` and ``aiohttp``).
 
     Args:
         upstream: Base URL for the backend (for example ``http://127.0.0.1:8001`` or
             ``https://api.example.com/v1``). No trailing slash required.
         cache: Configured ``SemanticCache`` instance.
-        timeout: Per-request timeout for upstream calls (seconds) or an ``aiohttp``
-            ``ClientTimeout`` object.
+        timeout: Per-request timeout for upstream calls in seconds, or an ``aiohttp``
+            ``ClientTimeout`` instance.
         verify: Whether to verify TLS certificates when ``upstream`` uses HTTPS.
         aiohttp_session_kwargs: Extra keyword arguments merged into
             ``aiohttp.ClientSession`` (for example a custom ``connector`` for tests
@@ -178,12 +205,14 @@ def create_semantic_cache_proxy_app(
 
     Raises:
         ValueError: If ``upstream`` is not a valid HTTP(S) URL with a host.
-        ImportError: If the ``proxy`` extra (``aiohttp``) is not installed.
+        ImportError: If the ``proxy`` extra (``fastapi`` and ``aiohttp``) is not
+            installed.
     """
+    FastAPI = _require_fastapi()
     aiohttp = _require_aiohttp()
     base = _validate_upstream(upstream)
     if isinstance(timeout, (int, float)):
-        http_timeout = aiohttp.ClientTimeout(total=timeout)
+        http_timeout = aiohttp.ClientTimeout(total=float(timeout))
     else:
         http_timeout = timeout
 
@@ -211,7 +240,7 @@ def create_semantic_cache_proxy_app(
             app.state.proxy_upstream_base = base
             yield
 
-    proxy_settings: "CacheSettings" = get_cache_settings()
+    proxy_settings: CacheSettings = get_cache_settings()
     _disable_proxy_app_docs = proxy_settings.disable_proxy_app_docs
     _openapi_url = None if _disable_proxy_app_docs else "/openapi.json"
     _docs_url = None if _disable_proxy_app_docs else "/docs"

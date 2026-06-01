@@ -418,6 +418,7 @@ redis = [
 ]
 test = [
     { name = "aiohttp" },
+    { name = "fastapi" },
     { name = "httpx" },
     { name = "numpy" },
     { name = "pytest" },
@@ -431,6 +432,7 @@ requires-dist = [
     { name = "aiohttp", marker = "extra == 'test'", specifier = ">=3.9" },
     { name = "cohere", marker = "extra == 'embed-cohere'", specifier = ">=5.0" },
     { name = "fastapi", marker = "extra == 'proxy'", specifier = ">=0.136.1" },
+    { name = "fastapi", marker = "extra == 'test'", specifier = ">=0.136.1" },
     { name = "httpx", marker = "extra == 'test'", specifier = ">=0.27.0" },
     { name = "numpy", marker = "extra == 'test'", specifier = ">=1.24" },
     { name = "openai", marker = "extra == 'embed-ollama'", specifier = ">=1.40" },

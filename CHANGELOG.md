@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`create_semantic_cache_proxy_app`**: lazy-loaded from the package root so core installs without the **`proxy`** extra no longer require FastAPI at import time. FastAPI and aiohttp are imported when the helper is called; install **`fastapi-semcache[proxy]`** to use it.
 - **Core dependencies**: the default wheel now depends on **`starlette>=0.46.0`** instead of **`fastapi`**. **`SemanticCacheMiddleware`** is Starlette/ASGI middleware; FastAPI apps should already declare **`fastapi`** in their own project. **`fastapi>=0.136.1`** is installed only with the **`proxy`** extra (alongside **`aiohttp`**) for **`create_semantic_cache_proxy_app`**.
 - **Reverse proxy**: upstream HTTP calls now use **`aiohttp.ClientSession`** instead of **`httpx`**. Install with **`fastapi-semcache[proxy]`** (`aiohttp>=3.9`, `fastapi>=0.136.1`). **`httpx`** is no longer a core dependency.
 - **`create_semantic_cache_proxy_app`**: renamed **`httpx_client_kwargs`** to **`aiohttp_session_kwargs`**.
