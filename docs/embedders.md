@@ -76,9 +76,13 @@ When you use the built-in Hugging Face backend through **`get_embedder(settings)
 
 **`CacheResult.source`** is still derived from **`CacheSettings.embedder_type`** (environment **`SEMANTIC_CACHE_EMBEDDER_TYPE`**) for hits and misses, not from the concrete embedder class or **`model_name`**. If you rely on that field for metrics, either align **`embedder_type`** with the backend you instantiated (**`huggingface`** vs **`openai`**) or treat **`source`** as configuration metadata only when **`embedder`** was passed explicitly.
 
-## Example: HTTP example API with HTTPX
+## Example: HTTP embedding API
 
-Install **`httpx`** in your app (or add it to your project dependencies) if you use this pattern. The snippet below assumes your service accepts `POST /embed` with body `{"texts": ["...", ...]}` and returns JSON like `{"vectors": [[float, ...], ...]}`. Rename paths and keys to match your API.
+Delegate embeddings to your own HTTP service. Both snippets below assume `POST /embed` with body `{"texts": ["...", ...]}` and JSON `{"vectors": [[float, ...], ...]}`. Rename paths and keys to match your API.
+
+### HTTPX
+
+Install **`httpx`** in your app (or add it to your project dependencies).
 
 ```python
 from typing import override
@@ -87,7 +91,7 @@ import httpx
 from semanticcache.embedders import BaseEmbedder
 
 
-class HttpExampleeEmbedder(BaseEmbedder):
+class HttpExampleHttpxEmbedder(BaseEmbedder):
     """Minimal example: delegate embeddings to your own HTTP service."""
 
     def __init__(
@@ -130,16 +134,75 @@ class HttpExampleeEmbedder(BaseEmbedder):
         return vectors
 ```
 
-Usage:
+### aiohttp
+
+Install **`aiohttp`** in your app, or use an extra that already includes it (for example **`fastapi-semcache[proxy]`** or **`embed-voyage`**).
+
+```python
+from typing import Any, override
+
+import aiohttp
+from semanticcache.embedders import BaseEmbedder
+
+
+class HttpExampleAiohttpEmbedder(BaseEmbedder):
+    """Minimal example: delegate embeddings to your own HTTP service (aiohttp)."""
+
+    def __init__(
+        self,
+        *,
+        base_url: str,
+        embedding_dim: int,
+        cache_namespace: str,
+    ) -> None:
+        self._base_url = base_url.rstrip("/")
+        self._embedding_dim = embedding_dim
+        self._cache_namespace = cache_namespace
+
+    @property
+    @override
+    def embedding_dim(self) -> int:
+        return self._embedding_dim
+
+    @property
+    @override
+    def cache_namespace(self) -> str:
+        return self._cache_namespace
+
+    @override
+    async def embed(self, texts: list[str]) -> list[list[float]]:
+        if not texts:
+            return []
+        timeout = aiohttp.ClientTimeout(total=60.0)
+        async with aiohttp.ClientSession(
+            base_url=self._base_url,
+            timeout=timeout,
+        ) as session:
+            async with session.post("/embed", json={"texts": texts}) as response:
+                response.raise_for_status()
+                payload: dict[str, Any] = await response.json()
+        vectors: list[list[float]] = payload["vectors"]
+        if len(vectors) != len(texts):
+            msg = "embedding API returned wrong number of vectors"
+            raise RuntimeError(msg)
+        for row in vectors:
+            if len(row) != self._embedding_dim:
+                msg = "embedding vector length does not match embedding_dim"
+                raise RuntimeError(msg)
+        return vectors
+```
+
+### Usage
 
 ```python
 from semanticcache import SemanticCache, get_cache_settings
 
-embedder = HttpExampleEmbedder(
+embedder = HttpExampleAiohttpEmbedder(
     base_url="http://127.0.0.1:9000",
     embedding_dim=768,
     cache_namespace="my-team-embed-v1-d768",
 )
+# Or: HttpExampleHttpxEmbedder(...)
 cache = SemanticCache(embedder=embedder, settings=get_cache_settings())
 ```
 
@@ -303,7 +366,7 @@ Through **`get_embedder(settings)`**, **`SEMANTIC_CACHE_OLLAMA_EMBEDDING_MODEL`*
 
 ## Reusing a long-lived HTTP client
 
-Opening a client per `embed` call is simple but not ideal under load. You can hold an **`httpx.AsyncClient`** on the embedder and close it when your app shuts down (for example in a FastAPI lifespan handler). Implement **`aclose()`** on custom embedders with long-lived clients; **`SemanticCache.close()`** awaits it when present.
+Opening a client per `embed` call is simple but not ideal under load. You can hold an **`httpx.AsyncClient`** or **`aiohttp.ClientSession`** on the embedder and close it when your app shuts down (for example in a FastAPI lifespan handler). Implement **`aclose()`** on custom embedders with long-lived clients; **`SemanticCache.close()`** awaits it when present.
 
 ## See also
 
