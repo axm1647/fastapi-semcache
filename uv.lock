@@ -384,10 +384,10 @@ name = "fastapi-semcache"
 version = "0.4.3"
 source = { editable = "." }
 dependencies = [
-    { name = "fastapi" },
     { name = "psycopg", extra = ["binary"] },
     { name = "psycopg-pool" },
     { name = "pydantic-settings" },
+    { name = "starlette" },
 ]
 
 [package.optional-dependencies]
@@ -411,6 +411,7 @@ embed-voyage = [
 ]
 proxy = [
     { name = "aiohttp" },
+    { name = "fastapi" },
 ]
 redis = [
     { name = "redis" },
@@ -429,7 +430,7 @@ requires-dist = [
     { name = "aiohttp", marker = "extra == 'proxy'", specifier = ">=3.9" },
     { name = "aiohttp", marker = "extra == 'test'", specifier = ">=3.9" },
     { name = "cohere", marker = "extra == 'embed-cohere'", specifier = ">=5.0" },
-    { name = "fastapi", specifier = ">=0.136.1" },
+    { name = "fastapi", marker = "extra == 'proxy'", specifier = ">=0.136.1" },
     { name = "httpx", marker = "extra == 'test'", specifier = ">=0.27.0" },
     { name = "numpy", marker = "extra == 'test'", specifier = ">=1.24" },
     { name = "openai", marker = "extra == 'embed-ollama'", specifier = ">=1.40" },
@@ -441,6 +442,7 @@ requires-dist = [
     { name = "pytest-asyncio", marker = "extra == 'test'", specifier = ">=0.24" },
     { name = "redis", marker = "extra == 'redis'", specifier = ">=7.4.0" },
     { name = "sentence-transformers", marker = "extra == 'embed-huggingface'", specifier = ">=3.0" },
+    { name = "starlette", specifier = ">=0.46.0" },
     { name = "tiktoken", marker = "extra == 'embed-openai'", specifier = ">=0.7" },
     { name = "torch", marker = "extra == 'embed-huggingface'", specifier = ">=2.1.0" },
     { name = "voyageai", marker = "extra == 'embed-voyage'", specifier = ">=0.3.1" },

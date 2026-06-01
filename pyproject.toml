@@ -42,7 +42,7 @@ classifiers = [
     "Topic :: Internet :: WWW/HTTP :: WSGI :: Middleware",
 ]
 dependencies = [
-    "fastapi>=0.136.1",
+    "starlette>=0.46.0",
     "psycopg[binary]>=3.3.3",
     "psycopg-pool>=3.3.0",
     "pydantic-settings>=2.14.0",
@@ -50,7 +50,7 @@ dependencies = [
 
 # PyPI serves CPU torch wheels by default. For CUDA, install with PyTorch's index (README).
 [project.optional-dependencies]
-proxy = ["aiohttp>=3.9"]
+proxy = ["aiohttp>=3.9", "fastapi>=0.136.1"]
 redis = ["redis>=7.4.0"]
 embed-huggingface = ["sentence-transformers>=3.0", "torch>=2.1.0"]
 embed-openai = ["openai>=1.40", "tiktoken>=0.7"]
