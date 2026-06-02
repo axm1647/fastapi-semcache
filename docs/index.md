@@ -52,7 +52,7 @@ pip install fastapi-semcache
 | `embed-ollama` | `openai` | `embedder_type="ollama"` |
 | `redis` | `redis` | `SEMANTIC_CACHE_REDIS_URI` is set |
 
-The core wheel installs **Starlette**, **psycopg**, and **pydantic-settings** only. Declare **`fastapi`** in your own project for **`FastAPI()`** apps; the middleware is Starlette/ASGI middleware. **`fastapi`** is pulled in by the **`proxy`** extra for reverse proxy mode.
+The core wheel installs **Starlette** and **psycopg** only. Declare **`fastapi`** in your own project for **`FastAPI()`** apps; the middleware is Starlette/ASGI middleware. **`fastapi`** is pulled in by the **`proxy`** extra for reverse proxy mode.
 
 Extras can be combined:
 

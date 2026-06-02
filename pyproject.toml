@@ -45,7 +45,6 @@ dependencies = [
     "starlette>=0.46.0",
     "psycopg[binary]>=3.3.3",
     "psycopg-pool>=3.3.0",
-    "pydantic-settings>=2.14.0",
 ]
 
 # PyPI serves CPU torch wheels by default. For CUDA, install with PyTorch's index (README).

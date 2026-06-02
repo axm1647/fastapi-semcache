@@ -175,9 +175,7 @@ def test_non_429_resets_consecutive_counter(cb_settings: CacheSettings) -> None:
 
 def test_circuit_expires_and_upstream_resumes(cb_settings: CacheSettings) -> None:
     """After ``circuit_breaker_429_open_seconds``, upstream is contacted again."""
-    short = cb_settings.model_copy(
-        update={"circuit_breaker_429_open_seconds": 0.05},
-    )
+    short = cb_settings.replace(circuit_breaker_429_open_seconds=0.05)
     calls = [0]
     fake = _FakeSemanticCache()
     app = _make_app(settings=short, fake=fake, upstream_calls=calls)

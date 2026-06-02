@@ -17,7 +17,7 @@ The PyPI distribution and GitHub repository are **`fastapi-semcache`**. The impo
 
 `fastapi-semcache` is meant for projects that already use FastAPI and Postgres
 and want semantic response caching without adding a separate vector database.
-The core install adds `starlette`, `pydantic-settings`, and `psycopg` (libpq C
+The core install adds `starlette` and `psycopg` (libpq C
 bindings). Your app should already depend on `fastapi` when you use a
 `FastAPI()` instance; the middleware itself is Starlette/ASGI middleware.
 Reverse proxy mode installs `fastapi` and `aiohttp` via the optional `proxy`

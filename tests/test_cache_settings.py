@@ -5,7 +5,6 @@ from __future__ import annotations
 import warnings
 
 import pytest
-from pydantic import ValidationError
 
 from semanticcache.config import CacheSettings
 
@@ -58,5 +57,5 @@ def test_blank_log_digest_key_uses_process_default() -> None:
 
 def test_response_mode_invalid_rejected() -> None:
     """Only ``buffered`` and ``tee`` are allowed."""
-    with pytest.raises(ValidationError):
-        CacheSettings.model_validate({"response_mode": "passthrough"})
+    with pytest.raises(ValueError, match="response_mode must be one of"):
+        CacheSettings(response_mode="passthrough")  # type: ignore[arg-type]

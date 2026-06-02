@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import pytest
-from pydantic import ValidationError
 
 import semanticcache.embedders as embedders_mod
 from semanticcache.config import CacheSettings
@@ -36,14 +35,12 @@ def test_cohere_embedder_constructed_from_settings(
             captured["api_key"] = api_key
 
     monkeypatch.setattr(embedders_mod, "CohereEmbedder", _TrackingCohere)
-    settings = CacheSettings.model_validate(
-        {
-            "embedder_type": "cohere",
-            "cohere_embedding_model": "embed-v4.0",
-            "cohere_embedding_dimensions": 1536,
-            "cohere_input_type": "search_query",
-            "SEMANTIC_CACHE_COHERE_API_KEY": "ck",
-        }
+    settings = CacheSettings(
+        embedder_type="cohere",
+        cohere_embedding_model="embed-v4.0",
+        cohere_embedding_dimensions=1536,
+        cohere_input_type="search_query",
+        cohere_api_key="ck",
     )
     _ = get_embedder(settings)
     assert captured["model_name"] == "embed-v4.0"
@@ -75,7 +72,7 @@ def test_cohere_embedder_factory_uses_defaults_when_model_and_dims_unset(
             captured["api_key"] = api_key
 
     monkeypatch.setattr(embedders_mod, "CohereEmbedder", _TrackingCohere)
-    settings = CacheSettings.model_validate({"embedder_type": "cohere"})
+    settings = CacheSettings(embedder_type="cohere")
     _ = get_embedder(settings)
     assert captured["model_name"] == embedders_mod.COHERE_DEFAULT_MODEL
     assert captured["dimensions"] == embedders_mod.COHERE_DEFAULT_DIMENSIONS
@@ -89,8 +86,8 @@ def test_cohere_embedder_factory_uses_defaults_when_model_and_dims_unset(
 )
 def test_invalid_embedder_type_raises_validation_error(embedder_type: str) -> None:
     """Reject embedder types outside the allowed literal union at settings parse time."""
-    with pytest.raises(ValidationError):
-        CacheSettings.model_validate({"embedder_type": embedder_type})
+    with pytest.raises(ValueError):
+        CacheSettings(embedder_type=embedder_type)  # type: ignore[arg-type]
 
 
 def test_huggingface_embedder_receives_settings_api_key(
@@ -108,11 +105,9 @@ def test_huggingface_embedder_receives_settings_api_key(
             captured["api_key"] = api_key
 
     monkeypatch.setattr(embedders_mod, "SBERTEmbedder", _TrackingSBERT)
-    settings = CacheSettings.model_validate(
-        {
-            "embedder_type": "huggingface",
-            "SEMANTIC_CACHE_HUGGING_FACE_API_KEY": "hf-from-settings",
-        }
+    settings = CacheSettings(
+        embedder_type="huggingface",
+        hugging_face_api_key="hf-from-settings",
     )
 
     _ = get_embedder(settings)
@@ -121,11 +116,11 @@ def test_huggingface_embedder_receives_settings_api_key(
 
 def test_ollama_requires_model_and_dimensions() -> None:
     """Ollama embedder type rejects settings without model id or dimension."""
-    with pytest.raises(ValidationError):
-        CacheSettings.model_validate({"embedder_type": "ollama"})
-    with pytest.raises(ValidationError):
-        CacheSettings.model_validate(
-            {"embedder_type": "ollama", "ollama_embedding_model": "qwen3-embedding"}
+    with pytest.raises(ValueError):
+        CacheSettings(embedder_type="ollama")
+    with pytest.raises(ValueError):
+        CacheSettings(
+            embedder_type="ollama", ollama_embedding_model="qwen3-embedding"
         )
 
 
@@ -152,14 +147,12 @@ def test_ollama_embedder_constructed_from_settings(
             captured["base_url"] = base_url
 
     monkeypatch.setattr(embedders_mod, "OllamaEmbedder", _TrackingOllama)
-    settings = CacheSettings.model_validate(
-        {
-            "embedder_type": "ollama",
-            "ollama_embedding_model": "my-embed-model",
-            "ollama_embedding_dimensions": 1024,
-            "ollama_base_url": "http://embeddings.example:11434/v1",
-            "SEMANTIC_CACHE_OLLAMA_API_KEY": "k",
-        }
+    settings = CacheSettings(
+        embedder_type="ollama",
+        ollama_embedding_model="my-embed-model",
+        ollama_embedding_dimensions=1024,
+        ollama_base_url="http://embeddings.example:11434/v1",
+        ollama_api_key="k",
     )
     _ = get_embedder(settings)
     assert captured["model_name"] == "my-embed-model"
@@ -193,14 +186,12 @@ def test_voyage_embedder_constructed_from_settings(
             captured["api_key"] = api_key
 
     monkeypatch.setattr(embedders_mod, "VoyageEmbedder", _TrackingVoyage)
-    settings = CacheSettings.model_validate(
-        {
-            "embedder_type": "voyage",
-            "voyage_embedding_model": "voyage-4-lite",
-            "voyage_embedding_dimensions": 512,
-            "voyage_input_type": "document",
-            "SEMANTIC_CACHE_VOYAGE_API_KEY": "vk",
-        }
+    settings = CacheSettings(
+        embedder_type="voyage",
+        voyage_embedding_model="voyage-4-lite",
+        voyage_embedding_dimensions=512,
+        voyage_input_type="document",
+        voyage_api_key="vk",
     )
     _ = get_embedder(settings)
     assert captured["model_name"] == "voyage-4-lite"
@@ -232,7 +223,7 @@ def test_voyage_embedder_factory_uses_defaults_when_model_and_dims_unset(
             captured["api_key"] = api_key
 
     monkeypatch.setattr(embedders_mod, "VoyageEmbedder", _TrackingVoyage)
-    settings = CacheSettings.model_validate({"embedder_type": "voyage"})
+    settings = CacheSettings(embedder_type="voyage")
     _ = get_embedder(settings)
     assert captured["model_name"] == embedders_mod.VOYAGE_DEFAULT_MODEL
     assert captured["dimensions"] == embedders_mod.VOYAGE_DEFAULT_DIMENSIONS

@@ -1,6 +1,9 @@
-from typing import Literal
+"""Core type definitions for the semantic cache library."""
 
-from pydantic import BaseModel
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Literal
 
 CacheSource = Literal[
     "embedders.sbert",
@@ -21,25 +24,28 @@ EmbedderType = Literal[
 ]
 
 
-class CacheQuery(BaseModel):
+@dataclass
+class CacheQuery:
     """Request-shaped cache lookup payload (query text and optional model key)."""
 
     query: str
     model: str | None = None
 
 
-class CacheResult(BaseModel):
+@dataclass
+class CacheResult:
     """Outcome of ``SemanticCache.get`` (hit or miss with optional payload)."""
 
     is_hit: bool
     similarity: float | None = None
     source: CacheSource = "none"
     response: dict[str, object] | None = None
-    query_embedding: list[float] | None = None
+    query_embedding: list[float] | None = field(default=None, repr=False)
     cache_entry_id: int | None = None
 
 
-class CacheEntry(BaseModel):
+@dataclass
+class CacheEntry:
     """One nearest-neighbor row from pgvector similarity search."""
 
     id: int

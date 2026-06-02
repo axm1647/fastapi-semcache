@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
+import os
 from contextlib import asynccontextmanager
-from typing import ClassVar
 
 from fastapi import FastAPI
-from pydantic import Field
-from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from semanticcache import (
     SemanticCache,
@@ -16,32 +14,16 @@ from semanticcache import (
 )
 
 
-class ProxyAppSettings(BaseSettings):
-    """Load proxy deployment settings from the environment."""
-
-    model_config: ClassVar[SettingsConfigDict] = SettingsConfigDict(
-        env_prefix="SEMANTIC_CACHE_PROXY_",
-        env_file=".env",
-        env_file_encoding="utf-8",
-        extra="ignore",
-    )
-
-    upstream: str = Field(
-        default="http://127.0.0.1:11434",
-        description="Base URL of the backend API to forward requests to.",
-    )
-
-
 def _build_app() -> FastAPI:
     """Create the ASGI app and chain semantic cache shutdown after the proxy lifespan.
 
     Returns:
         FastAPI application passed to uvicorn.
     """
-    settings = ProxyAppSettings()
+    upstream = os.getenv("SEMANTIC_CACHE_PROXY_UPSTREAM", "http://127.0.0.1:11434")
     cache = SemanticCache(settings=get_cache_settings())
     app = create_semantic_cache_proxy_app(
-        upstream=settings.upstream,
+        upstream=upstream,
         cache=cache,
     )
     inner_lifespan = app.router.lifespan_context
