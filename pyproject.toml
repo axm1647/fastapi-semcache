@@ -74,11 +74,15 @@ Documentation = "https://fastapi-semcache.readthedocs.io/en/latest"
 Changelog = "https://github.com/axm1647/fastapi-semcache/releases"
 
 [tool.setuptools]
-py-modules = ["fastapi_semcache"]
+include-package-data = true
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["semanticcache*"]
+include = ["semanticcache*", "fastapi_semcache*"]
+
+[tool.setuptools.package-data]
+semanticcache = ["py.typed", "*.pyi"]
+fastapi_semcache = ["*.pyi"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
