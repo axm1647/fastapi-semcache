@@ -5,13 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-[0.4.5] - 2026-06-02
+## [Unreleased]
+
+
+### Changed (breaking)
+
+- **Core dependencies**: `pydantic-settings` has been removed from the core dependency list. The minimum install now depends only on `starlette` and `psycopg`. Projects that imported `pydantic-settings` types from this package must add `pydantic-settings` to their own dependencies if still needed.
+- **`CacheSettings`**: no longer subclasses `pydantic_settings.BaseSettings`. It is now a plain Python class whose constructor accepts all configuration fields as keyword arguments. When a field is omitted the constructor reads the matching `SEMANTIC_CACHE_*` environment variable and applies the documented default. `os.getenv` with explicit `float()` / `int()` / bool casting replaces pydantic field parsing; invalid values raise `ValueError` with descriptive messages.
+  - `CacheSettings()` and `CacheSettings.from_env()` both construct a fully environment-driven instance (three-line setup is unchanged).
+  - `CacheSettings(threshold=0.9, pg_uri="...")` still works; every field can be set directly as a constructor keyword argument.
+  - `model_validate` and `model_copy` are removed. Use `CacheSettings(...)` directly and the new `CacheSettings.replace(**overrides)` method respectively.
+- **`CacheQuery`**, **`CacheResult`**, **`CacheEntry`** (`semanticcache.types`): converted from `pydantic.BaseModel` subclasses to standard library `@dataclass` classes. Field names and types are unchanged. Code that relied on pydantic model methods (`.model_dump()`, `.model_validate()`, etc.) should switch to `dataclasses.asdict()` or plain attribute access.
+- **`app/main.py`** (`proxy` extra entry point): `ProxyAppSettings` (a `BaseSettings` subclass) is replaced with a direct `os.getenv("SEMANTIC_CACHE_PROXY_UPSTREAM", "http://127.0.0.1:11434")` call.
+
+### Added
+
+- **`CacheSettings.replace(**overrides)`**: returns a new `CacheSettings` instance with selected fields overridden, copying all other fields from the original. Drop-in native replacement for the pydantic `model_copy(update={...})` pattern.
+
+## [0.4.5] - 2026-06-02
 
 ### Fixed
 
 - **PyPI typing artifacts**: wheels now ship **`semanticcache/py.typed`** (PEP 561) and **`fastapi_semcache/__init__.pyi`**. Previously the install-name stub and typed-package marker were omitted from wheels, so type checkers could not resolve most imports after `pip install`.
 
-[0.4.4] - 2026-06-02
+## [0.4.4] - 2026-06-02
 
 ### Added
 
@@ -27,7 +44,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Reverse proxy**: upstream HTTP calls now use **`aiohttp.ClientSession`** instead of **`httpx`**. Install with **`fastapi-semcache[proxy]`** (`aiohttp>=3.9`, `fastapi>=0.136.1`). **`httpx`** is no longer a core dependency.
 - **`create_semantic_cache_proxy_app`**: renamed **`httpx_client_kwargs`** to **`aiohttp_session_kwargs`**.
 
-[0.4.3] - 2026-05-25
+## [0.4.3] - 2026-05-25
 
 ### Added
 
@@ -63,7 +80,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **`CacheSettings.openai_api_key`**: set repr=False to prevent API keys being leaked in .
 - **`docker/compose.yml`**: hardcoded `user`/`pass` credentials replaced with `${POSTGRES_USER}` / `${POSTGRES_PASSWORD}` host-environment variables (compose fails fast if either is unset). Postgres and Redis port bindings restricted to `127.0.0.1` so they are not reachable from outside the host.
-- **`stream_tee_and_store` upstream timeout in tee mode** (C3): on `asyncio.TimeoutError`, the function previously returned `504` to the middleware caller without ever calling `send`, leaving clients hanging indefinitely when the upstream had not yet sent `http.response.start`. `TeeSend` now tracks `response_start_sent`. The timeout handler distinguishes two cases: (1) before `http.response.start` -- a complete 504 response is emitted via `send` before releasing the flight lock; (2) mid-stream (headers already committed) -- a terminal empty body chunk is sent to close the connection cleanly and a warning is logged. Test `test_stream_tee_and_store_upstream_timeout_returns_504` was split into two tests that assert the messages actually received by `send` rather than just the return value. `docs/cache-tuning.md` documents the two-phase behaviour and advises setting `upstream_timeout_seconds` above expected time-to-first-byte to avoid mid-stream truncations.
+- **`stream_tee_and_store` upstream timeout in tee mode** (C3): on `asyncio.TimeoutError`, the function previously returned `504` to the middleware caller without ever calling `send`, leaving clients hanging indefinitely when the upstream had not yet sent `http.response.start`. `TeeSend` now tracks `response_start_sent`. The timeout handler distinguishes two cases: (1) before `http.response.start`. A complete 504 response is emitted via `send` before releasing the flight lock; (2) mid-stream (headers already committed). A terminal empty body chunk is sent to close the connection cleanly and a warning is logged. Test `test_stream_tee_and_store_upstream_timeout_returns_504` was split into two tests that assert the messages actually received by `send` rather than just the return value. `docs/cache-tuning.md` documents the two-phase behaviour and advises setting `upstream_timeout_seconds` above expected time-to-first-byte to avoid mid-stream truncations.
 
 ## [0.4.1] - 2026-05-23
 
