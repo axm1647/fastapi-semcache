@@ -20,6 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Exact-match Redis fast path** (`SemanticCache`): when Redis is enabled, `SemanticCache.get` now checks for an exact text match in Redis **before** generating an embedding. On every `put`, a small `{"id": <row_id>}` entry is stored under a separate key (`semanticcache:resp:<prefix>:exact:<scope_bucket>:<model_bucket>:<sha256_of_query>`). On `get`, if that key is present, the response is retrieved directly by row id -- skipping the embedder and pgvector scan entirely. If the response blob has expired or been evicted from Redis, the library falls back to a single Postgres `id` lookup. If that row is also gone, the normal embedding and ANN search path runs as usual. The query text is SHA-256 hashed in the key to avoid storing raw prompt text in Redis key names. Exact-match hits report `similarity=1.0`. This fast path is only active when `SEMANTIC_CACHE_REDIS_URI` is set.
+- **`AsyncPgVectorStore.get_by_id`**: fetch a single cache row by primary key within its model and scope buckets. Used as the Postgres fallback for the exact-match fast path when the Redis response blob is absent.
 - **`CacheSettings.replace(**overrides)`**: returns a new `CacheSettings` instance with selected fields overridden, copying all other fields from the original. Drop-in native replacement for the pydantic `model_copy(update={...})` pattern.
 
 ## [0.4.5] - 2026-06-02
