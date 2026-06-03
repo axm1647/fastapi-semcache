@@ -64,6 +64,17 @@ test = [
     "pytest>=8.0",
     "pytest-asyncio>=0.24",
 ]
+all = [
+    "aiohttp>=3.9",
+    "fastapi>=0.136.1",
+    "sentence-transformers>=3.0",
+    "torch>=2.1.0",
+    "openai>=1.40",
+    "tiktoken>=0.7",
+    "voyageai>=0.3.1",
+    "cohere>=5.0",
+    "redis>=7.4.0",
+]
 
 [project.urls]
 Homepage = "https://github.com/axm1647/fastapi-semcache"
