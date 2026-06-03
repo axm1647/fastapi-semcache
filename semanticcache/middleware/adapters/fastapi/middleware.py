@@ -537,10 +537,10 @@ class SemanticCacheMiddleware:
                 q, record, mdl, storage, embedding
             )
 
-        _stream_hit: Callable[[CacheResult, Send, Scope], Awaitable[bool]] | None = None
+        _stream_hit: Callable[[CacheResult, Send, Scope], Awaitable[bool]] | None
         if self._scope_settings.hit_response_mode == "stream":
 
-            async def _stream_hit(
+            async def _stream_hit_impl(
                 res: CacheResult, out_send: Send, out_scope: Scope
             ) -> bool:
                 return await stream_cache_hit(
@@ -553,6 +553,10 @@ class SemanticCacheMiddleware:
                     scope=out_scope,
                     chunk_size=self._scope_settings.hit_stream_chunk_size,
                 )
+
+            _stream_hit = _stream_hit_impl
+        else:
+            _stream_hit = None
 
         # -- end bound helpers --
 
