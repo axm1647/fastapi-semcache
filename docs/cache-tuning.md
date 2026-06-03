@@ -146,6 +146,30 @@ Middleware in-flight lock keys also include the resolved **scope** string so con
 
 **`scope_key`** affects Postgres matching and Redis key segments (an extra scope bucket hash appears before the model segment). Rows with `scope_key = ''` are looked up only when `require_cache_scope` is false (one shared bucket). When **`require_cache_scope`** is true, each normalized scope string is its own partition.
 
+### Exact-match fast path (Redis only)
+
+When Redis is enabled, `SemanticCache.get` checks for an exact text match in Redis **before** generating an embedding. This is a zero-cost lookup: no embedder call, no pgvector query.
+
+On every `put`, the library stores a small entry under a separate key:
+
+```
+semanticcache:resp:<embedder_prefix>:exact:<scope_bucket>:<model_bucket>:<sha256_of_query>
+{"id": <postgres_row_id>}
+```
+
+On `get`, if that key is found, the row id is used to look up the response blob directly:
+
+1. **Redis hit**: The response blob (`semanticcache:resp:<prefix>:<scope>:<model>:<id>`) is returned immediately. Embedding is skipped entirely.
+2. **Redis blob expired/evicted**: Falls back to a single Postgres `id` lookup (no vector scan).
+3. **Both Redis and Postgres miss** (row deleted or expired): Proceeds to the normal embedding and ANN search path.
+4. **Key absent**: No entry was stored for this exact text; proceeds to embedding and ANN search as normal.
+
+The query text is SHA-256 hashed before being used in the key name so raw prompt text is never embedded in Redis key strings.
+
+This fast path is only active when `SEMANTIC_CACHE_REDIS_URI` is set. In Postgres-only mode the exact-match check is skipped and the flow proceeds directly to embedding.
+
+**Similarity reported:** Exact-match hits report `similarity=1.0` since the match is on the precise composed query text.
+
 ### Stage 1: nearest-neighbor search (top-k)
 
 The first stage embeds the query and runs a pgvector similarity search:

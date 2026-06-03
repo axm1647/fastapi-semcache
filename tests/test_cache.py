@@ -188,7 +188,7 @@ async def test_get_passes_hnsw_ef_search_override_to_vector_store() -> None:
 
 @pytest.mark.asyncio
 async def test_get_hit_prefers_redis_when_enabled() -> None:
-    """Redis payload replaces Postgres JSON when present."""
+    """Redis payload replaces Postgres JSON when present (semantic hit path)."""
     settings = CacheSettings(
         redis_uri="redis://localhost:6379/0",
         pg_uri="postgresql://mock/mock",
@@ -209,15 +209,20 @@ async def test_get_hit_prefers_redis_when_enabled() -> None:
     cache._vector_store = mock_vs
 
     mock_redis = AsyncMock()
-    mock_redis.get = AsyncMock(return_value={"from": "redis"})
+    # Return None for exact-match lookup so the semantic path is exercised,
+    # then return the response blob for the response-key lookup.
+    mock_redis.get = AsyncMock(
+        side_effect=lambda key: None if ":exact:" in key else {"from": "redis"}
+    )
     cache._redis_store = mock_redis
 
     result = await cache.get("hello")
     assert result.is_hit is True
     assert result.response == {"from": "redis"}
-    mock_redis.get.assert_awaited_once()
-    redis_key = mock_redis.get.await_args[0][0]
-    assert redis_key.endswith(":default:default:7")
+    all_keys = [call[0][0] for call in mock_redis.get.await_args_list]
+    response_keys = [k for k in all_keys if ":exact:" not in k]
+    assert len(response_keys) == 1
+    assert response_keys[0].endswith(":default:default:7")
 
 
 @pytest.mark.asyncio
@@ -573,8 +578,11 @@ async def test_get_put_pass_scope_key_when_required() -> None:
     assert mock_vs.upsert.await_args.kwargs["scope_key"] == "org-9"
     get_key = mock_redis.get.await_args[0][0]
     assert get_key.endswith(":3")
-    put_key = mock_redis.put.await_args[0][0]
-    assert put_key.endswith(":4")
+    # put is called twice: response blob first, then exact-match id entry.
+    put_keys = [call[0][0] for call in mock_redis.put.await_args_list]
+    response_put_keys = [k for k in put_keys if ":exact:" not in k]
+    assert len(response_put_keys) == 1
+    assert response_put_keys[0].endswith(":4")
 
 
 @pytest.mark.asyncio
@@ -633,3 +641,213 @@ async def test_close_is_idempotent_for_embedder_aclose() -> None:
     await cache.close()
 
     embedder.aclose.assert_awaited_once()
+
+
+# ---------------------------------------------------------------------------
+# Exact-match Redis fast path tests
+# ---------------------------------------------------------------------------
+
+
+def _make_cache_with_redis(embedder: BaseEmbedder) -> SemanticCache:
+    """Build a cache with Redis enabled and the given embedder."""
+    settings = CacheSettings(
+        redis_uri="redis://localhost:6379/0",
+        pg_uri="postgresql://mock/mock",
+        require_cache_scope=False,
+    )
+    return SemanticCache(
+        embedder=embedder,
+        pg_uri="postgresql://mock/mock",
+        redis_uri="redis://localhost:6379/0",
+        settings=settings,
+    )
+
+
+@pytest.mark.asyncio
+async def test_exact_match_redis_hit_skips_embedding() -> None:
+    """Exact-text Redis hit returns response without calling the embedder."""
+    embedder = _CountingEmbedder()
+    cache = _make_cache_with_redis(embedder)
+
+    mock_vs = AsyncMock()
+    mock_vs.open = AsyncMock()
+    mock_vs.ensure_schema = AsyncMock()
+    cache._vector_store = mock_vs
+
+    mock_redis = AsyncMock()
+    mock_redis.get = AsyncMock(
+        side_effect=lambda key: (
+            {"id": 42} if ":exact:" in key else {"from": "redis"}
+        )
+    )
+    cache._redis_store = mock_redis
+
+    result = await cache.get("exact query text")
+
+    assert result.is_hit is True
+    assert result.response == {"from": "redis"}
+    assert result.similarity == 1.0
+    assert result.cache_entry_id == 42
+    assert embedder.calls == 0
+    mock_vs.similarity_search_top_k.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_exact_match_redis_miss_falls_through_to_embedding() -> None:
+    """When exact-match Redis key is absent, embedding and ANN search run normally."""
+    embedder = _CountingEmbedder()
+    cache = _make_cache_with_redis(embedder)
+
+    mock_vs = AsyncMock()
+    mock_vs.open = AsyncMock()
+    mock_vs.ensure_schema = AsyncMock()
+    mock_vs.similarity_search_top_k = AsyncMock(return_value=[])
+    cache._vector_store = mock_vs
+
+    mock_redis = AsyncMock()
+    mock_redis.get = AsyncMock(return_value=None)
+    cache._redis_store = mock_redis
+
+    result = await cache.get("unseen query")
+
+    assert result.is_hit is False
+    assert embedder.calls == 1
+    mock_vs.similarity_search_top_k.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_exact_match_redis_blob_expired_falls_back_to_postgres() -> None:
+    """When exact key is present but response blob is gone, Postgres is the fallback."""
+    embedder = _CountingEmbedder()
+    cache = _make_cache_with_redis(embedder)
+
+    pg_entry = CacheEntry(
+        id=7,
+        query_text="stored query",
+        response={"from": "postgres"},
+        similarity=1.0,
+    )
+
+    mock_vs = AsyncMock()
+    mock_vs.open = AsyncMock()
+    mock_vs.ensure_schema = AsyncMock()
+    mock_vs.get_by_id = AsyncMock(return_value=pg_entry)
+    cache._vector_store = mock_vs
+
+    def _redis_get(key: str) -> dict | None:
+        if ":exact:" in key:
+            return {"id": 7}
+        return None  # response blob evicted
+
+    mock_redis = AsyncMock()
+    mock_redis.get = AsyncMock(side_effect=_redis_get)
+    cache._redis_store = mock_redis
+
+    result = await cache.get("some query")
+
+    assert result.is_hit is True
+    assert result.response == {"from": "postgres"}
+    assert result.similarity == 1.0
+    assert result.cache_entry_id == 7
+    assert embedder.calls == 0
+    mock_vs.get_by_id.assert_awaited_once_with(
+        7, model_key="", scope_key=""
+    )
+    mock_vs.similarity_search_top_k.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_exact_match_redis_postgres_fallback_also_misses() -> None:
+    """When both Redis blob and Postgres row are gone, falls through to ANN search."""
+    embedder = _CountingEmbedder()
+    cache = _make_cache_with_redis(embedder)
+
+    mock_vs = AsyncMock()
+    mock_vs.open = AsyncMock()
+    mock_vs.ensure_schema = AsyncMock()
+    mock_vs.get_by_id = AsyncMock(return_value=None)
+    mock_vs.similarity_search_top_k = AsyncMock(return_value=[])
+    cache._vector_store = mock_vs
+
+    def _redis_get(key: str) -> dict | None:
+        if ":exact:" in key:
+            return {"id": 99}
+        return None
+
+    mock_redis = AsyncMock()
+    mock_redis.get = AsyncMock(side_effect=_redis_get)
+    cache._redis_store = mock_redis
+
+    result = await cache.get("stale query")
+
+    assert result.is_hit is False
+    assert embedder.calls == 1
+    mock_vs.get_by_id.assert_awaited_once()
+    mock_vs.similarity_search_top_k.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_put_writes_exact_match_key_to_redis() -> None:
+    """``put`` writes both the response blob and the exact-match id entry to Redis."""
+    embedder = _FixedEmbedder()
+    cache = _make_cache_with_redis(embedder)
+
+    mock_vs = AsyncMock()
+    mock_vs.open = AsyncMock()
+    mock_vs.ensure_schema = AsyncMock()
+    mock_vs.upsert = AsyncMock(return_value=55)
+    cache._vector_store = mock_vs
+
+    mock_redis = AsyncMock()
+    cache._redis_store = mock_redis
+
+    await cache.put("store this query", {"answer": "yes"})
+
+    assert mock_redis.put.await_count == 2
+    call_keys = [call[0][0] for call in mock_redis.put.await_args_list]
+    assert any(":exact:" in k for k in call_keys), (
+        f"Expected one exact-match key among {call_keys}"
+    )
+    assert any(":exact:" not in k for k in call_keys), (
+        f"Expected one response blob key among {call_keys}"
+    )
+    exact_call = next(c for c in mock_redis.put.await_args_list if ":exact:" in c[0][0])
+    assert exact_call[0][1] == {"id": 55}
+
+
+@pytest.mark.asyncio
+async def test_exact_match_key_is_scoped_by_model_and_scope() -> None:
+    """Exact-match keys include hashed model and scope segments."""
+    settings = CacheSettings(
+        redis_uri="redis://localhost:6379/0",
+        pg_uri="postgresql://mock/mock",
+        require_cache_scope=True,
+    )
+    cache = SemanticCache(
+        embedder=_FixedEmbedder(),
+        pg_uri="postgresql://mock/mock",
+        redis_uri="redis://localhost:6379/0",
+        settings=settings,
+    )
+
+    mock_vs = AsyncMock()
+    mock_vs.open = AsyncMock()
+    mock_vs.ensure_schema = AsyncMock()
+    mock_vs.upsert = AsyncMock(return_value=10)
+    cache._vector_store = mock_vs
+
+    mock_redis = AsyncMock()
+    cache._redis_store = mock_redis
+
+    await cache.put("q", {"x": 1}, model="gpt-4", scope="org-1")
+    await cache.put("q", {"x": 1}, model="gpt-4", scope="org-2")
+
+    exact_keys = [
+        call[0][0]
+        for call in mock_redis.put.await_args_list
+        if ":exact:" in call[0][0]
+    ]
+    assert len(exact_keys) == 2
+    assert exact_keys[0] != exact_keys[1], (
+        "Exact-match keys must differ across scope buckets"
+    )

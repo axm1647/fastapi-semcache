@@ -150,7 +150,7 @@ def test_tee_mode_explicit_single_hit_response_mode_is_respected() -> None:
 def test_hit_stream_mode_emits_asgi_chunks_without_content_length() -> None:
     """tee mode auto-applies stream hit delivery; hits have no content-length.
 
-    hit_response_mode is not set explicitly -- the coupled default is exercised.
+    hit_response_mode is not set explicitly. The coupled default is stream.
     TestClient reassembles chunked ASGI body messages transparently, so body
     equality and status code are the primary observable assertions here.
     """

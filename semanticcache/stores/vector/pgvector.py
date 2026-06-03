@@ -309,6 +309,53 @@ class AsyncPgVectorStore:
                     raise RuntimeError(msg)
                 return int(row[0])
 
+    async def get_by_id(
+        self,
+        entry_id: int,
+        *,
+        model_key: str = "",
+        scope_key: str = "",
+    ) -> CacheEntry | None:
+        """Fetch a single row by primary key within the model and scope buckets.
+
+        Used as a Postgres fallback when the Redis response blob for an exact-match
+        entry has expired or been evicted.
+
+        Args:
+            entry_id: Primary key ``id`` of the row to fetch.
+            model_key: Row filter; must match the row's ``model_key`` column.
+            scope_key: Row filter; must match the row's ``scope_key`` column.
+
+        Returns:
+            ``CacheEntry`` when a matching, non-expired row exists; ``None`` otherwise.
+        """
+        tbl = sql.Identifier(self._table_name)
+        stmt = sql.SQL("""
+            SELECT id, query_text, response
+            FROM {tbl}
+            WHERE id = %s
+              AND model_key = %s
+              AND scope_key = %s
+              AND (expires_at IS NULL OR expires_at > NOW())
+            LIMIT 1
+            """).format(tbl=tbl)
+        async with self._pool.connection() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(stmt, (entry_id, model_key, scope_key))
+                row = await cur.fetchone()
+                if row is None:
+                    return None
+                rid, qtext, resp = row
+                if not isinstance(resp, dict):
+                    msg = "cache response column must deserialize to a JSON object"
+                    raise TypeError(msg)
+                return CacheEntry(
+                    id=int(rid),
+                    query_text=str(qtext),
+                    response=resp,
+                    similarity=1.0,
+                )
+
     async def delete_by_id(
         self,
         entry_id: int,

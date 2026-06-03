@@ -61,6 +61,36 @@ def _redis_bucket_segment(raw_key: str) -> str:
     return hashlib.sha256(raw_key.encode("utf-8")).hexdigest()[:16]
 
 
+def _exact_match_redis_key(
+    *,
+    redis_key_prefix: str,
+    query: str,
+    model_key: str,
+    scope_key: str,
+) -> str:
+    """Build the Redis key used for exact-text-to-row-id lookup.
+
+    The query text is SHA-256 hashed to keep the key length bounded and to
+    avoid embedding raw prompt text in Redis key names.
+
+    Args:
+        redis_key_prefix: Per-embedder namespace prefix (e.g. ``sc:<digest>``).
+        query: Composed lookup text (method, path, model, semantic query).
+        model_key: Normalized model bucket string.
+        scope_key: Normalized scope bucket string.
+
+    Returns:
+        Full Redis key string for the exact-match lookup entry.
+    """
+    query_hash = hashlib.sha256(query.encode("utf-8")).hexdigest()
+    return (
+        f"{redis_key_prefix}:exact:"
+        f"{_redis_bucket_segment(scope_key)}:"
+        f"{_redis_bucket_segment(model_key)}:"
+        f"{query_hash}"
+    )
+
+
 def _resolve_scope_key_for_storage(
     *,
     scope: str | None,
@@ -345,6 +375,81 @@ class SemanticCache:
         if scope_key is None:
             return CacheResult(is_hit=False, similarity=None, source=src, response=None)
         await self._ensure_open()
+
+        # Fast path: exact-text match in Redis (skips embedding entirely).
+        if self._redis_store is not None:
+            exact_key = _exact_match_redis_key(
+                redis_key_prefix=self._redis_key_prefix,
+                query=query,
+                model_key=model_key,
+                scope_key=scope_key,
+            )
+            exact_entry = await self._with_timeout(
+                operation="redis_exact_get",
+                timeout_seconds=self._store_timeout_seconds,
+                work=self._redis_store.get(exact_key),
+            )
+            if exact_entry is not None:
+                row_id_raw = exact_entry.get("id")
+                if isinstance(row_id_raw, int):
+                    row_id = row_id_raw
+                    redis_resp_key = (
+                        f"{self._redis_key_prefix}:{_redis_bucket_segment(scope_key)}:"
+                        f"{_redis_bucket_segment(model_key)}:{row_id}"
+                    )
+                    from_redis = await self._with_timeout(
+                        operation="redis_get",
+                        timeout_seconds=self._store_timeout_seconds,
+                        work=self._redis_store.get(redis_resp_key),
+                    )
+                    if from_redis is not None:
+                        _logger.debug(
+                            "Semantic cache exact Redis hit: scope=%s model=%s id=%d",
+                            scope_key,
+                            model_key,
+                            row_id,
+                        )
+                        return CacheResult(
+                            is_hit=True,
+                            similarity=1.0,
+                            source=src,
+                            response=from_redis,
+                            cache_entry_id=row_id,
+                        )
+                    # Redis response blob expired or evicted; fall back to Postgres.
+                    pg_entry = await self._with_timeout(
+                        operation="db_get_by_id",
+                        timeout_seconds=self._store_timeout_seconds,
+                        work=self._vector_store.get_by_id(
+                            row_id,
+                            model_key=model_key,
+                            scope_key=scope_key,
+                        ),
+                    )
+                    if pg_entry is not None:
+                        _logger.debug(
+                            "Semantic cache exact Postgres fallback hit: "
+                            "scope=%s model=%s id=%d",
+                            scope_key,
+                            model_key,
+                            row_id,
+                        )
+                        return CacheResult(
+                            is_hit=True,
+                            similarity=1.0,
+                            source=src,
+                            response=pg_entry.response,
+                            cache_entry_id=row_id,
+                        )
+                else:
+                    _logger.warning(
+                        "Semantic cache exact-match entry missing valid id field: "
+                        "scope=%s model=%s key=%s",
+                        scope_key,
+                        model_key,
+                        exact_key,
+                    )
+
         vectors = await self._with_timeout(
             operation="embed_get",
             timeout_seconds=self._embed_timeout_seconds,
@@ -549,6 +654,17 @@ class SemanticCache:
                 operation="redis_put",
                 timeout_seconds=self._store_timeout_seconds,
                 work=self._redis_store.put(redis_key, response),
+            )
+            exact_key = _exact_match_redis_key(
+                redis_key_prefix=self._redis_key_prefix,
+                query=query,
+                model_key=model_key,
+                scope_key=scope_key,
+            )
+            await self._with_timeout(
+                operation="redis_exact_put",
+                timeout_seconds=self._store_timeout_seconds,
+                work=self._redis_store.put(exact_key, {"id": row_id}),
             )
 
     async def close(self) -> None:
