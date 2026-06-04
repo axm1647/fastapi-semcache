@@ -170,6 +170,8 @@ You can combine extras, for example **`pip install "fastapi-semcache[redis,embed
 
 ## FastAPI middleware
 
+**fastapi-semcache** implements the ASGI directly rather than subclassing Starlette's **BaseHTTPMiddleware** class.
+
 > **Security: cache scope and cross-tenant isolation**
 >
 > By default (`SEMANTIC_CACHE_REQUIRE_CACHE_SCOPE=false`), the cache uses one
