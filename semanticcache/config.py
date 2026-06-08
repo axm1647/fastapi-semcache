@@ -279,6 +279,8 @@ class CacheSettings:
             self.pg_uri: str = pg_uri
         else:
             self.pg_uri = os.getenv("SEMANTIC_CACHE_PG_URI", "")
+        if self.pg_uri.strip() == "":
+            raise ValueError("SEMANTIC_CACHE_PG_URI is required")
 
         # ---- pg_ensure_schema --------------------------------------------
         if pg_ensure_schema is not None:
