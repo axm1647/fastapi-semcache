@@ -8,11 +8,11 @@ from __future__ import annotations
 # pyright: reportUnknownVariableType=false
 # pyright: reportUnknownArgumentType=false
 # pyright: reportMissingModuleSource=false
-
 import threading
 from types import ModuleType
 from typing import Any, Literal, final, override
 
+from ..config import get_cache_settings
 from ..exceptions import InvalidEmbeddingDimensionException
 from ._base import BaseEmbedder
 
@@ -120,8 +120,9 @@ class CohereEmbedder(BaseEmbedder):
         self._client_lock = threading.Lock()
 
     @override
-    def api_key_required(self, api_key: str) -> None:
-        if api_key is None:
+    def api_key_required(self, api_key: str | None) -> None:
+        _settings = get_cache_settings()
+        if api_key is None and _settings.cohere_api_key is None:
             msg = "CohereEmbedder requires an API key"
             raise ValueError(msg)
 

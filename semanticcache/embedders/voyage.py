@@ -8,11 +8,11 @@ from __future__ import annotations
 # pyright: reportUnknownVariableType=false
 # pyright: reportUnknownArgumentType=false
 # pyright: reportMissingModuleSource=false
-
 import threading
 from types import ModuleType
 from typing import Any, final, override
 
+from ..config import get_cache_settings
 from ..exceptions import InvalidEmbeddingDimensionException
 from ._base import BaseEmbedder
 
@@ -39,8 +39,8 @@ def _require_voyageai_and_aiohttp() -> tuple[ModuleType, ModuleType]:
         ImportError: If voyageai or aiohttp are not installed.
     """
     try:
-        import voyageai
         import aiohttp as _aiohttp
+        import voyageai
     except ImportError as exc:
         msg = (
             "VoyageEmbedder requires optional dependencies. "
@@ -111,10 +111,10 @@ class VoyageEmbedder(BaseEmbedder):
         self._session = None
         self._session_lock = threading.Lock()
 
-
     @override
-    def api_key_required(self, api_key: str) -> None:
-        if api_key is None:
+    def api_key_required(self, api_key: str | None) -> None:
+        _settings = get_cache_settings()
+        if api_key is None and _settings.voyage_api_key is None:
             msg = "VoyageEmbedder requires an API key"
             raise ValueError(msg)
 

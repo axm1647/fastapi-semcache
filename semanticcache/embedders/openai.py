@@ -1,6 +1,7 @@
 """OpenAI API embedding backend (``openai`` async client)."""
 
 from __future__ import annotations
+
 import threading
 from types import ModuleType
 
@@ -9,9 +10,9 @@ from types import ModuleType
 # pyright: reportUnknownMemberType=false
 # pyright: reportUnknownVariableType=false
 # pyright: reportUnknownArgumentType=false
+from typing import TYPE_CHECKING, Any, override
 
-from typing import Any, override, TYPE_CHECKING
-
+from ..config import get_cache_settings
 from ..exceptions import InvalidEmbeddingDimensionException
 from ._base import BaseEmbedder
 
@@ -105,10 +106,10 @@ class OpenAIEmbedder(BaseEmbedder):
         self._client_lock = threading.Lock()
         self._encoding = _encoding_for_model(tiktoken, model_name)
 
-    
     @override
-    def api_key_required(self, api_key: str) -> None:
-        if api_key is None:
+    def api_key_required(self, api_key: str | None) -> None:
+        _settings = get_cache_settings()
+        if api_key is None and _settings.openai_api_key is None:
             msg = "OpenAIEmbedder requires an API key"
             raise ValueError(msg)
 

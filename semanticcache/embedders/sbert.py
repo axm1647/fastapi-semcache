@@ -3,6 +3,7 @@
 # sentence-transformers typing is incomplete; interactions stay runtime-checked.
 # pyright: reportAny=false
 # pyright: reportUnknownMemberType=false
+# pyright: reportConstantRedefinition=false
 
 from __future__ import annotations
 
@@ -10,6 +11,7 @@ import asyncio
 import warnings
 from typing import cast, final, override
 
+from ..config import get_cache_settings
 from ..exceptions import EmbeddingDimensionUnavailableException
 from ._base import BaseEmbedder
 
@@ -92,12 +94,14 @@ class SBERTEmbedder(BaseEmbedder):
         self._normalize_embeddings: bool = normalize_embeddings
 
     @override
-    def api_key_required(self, api_key: str) -> None:
-        warnings.warn(
-            "SBERTEmbedder uses the API key for private models and rate-limited access",
-            UserWarning,
-            stacklevel=2,
-        )
+    def api_key_required(self, api_key: str | None) -> None:
+        _settings = get_cache_settings()
+        if api_key is None and _settings.hugging_face_api_key is None:
+            warnings.warn(
+                "SBERTEmbedder uses the API key for private models and rate-limited access",
+                UserWarning,
+                stacklevel=2,
+            )
 
     @property
     @override

@@ -10,9 +10,9 @@ from types import ModuleType
 # pyright: reportUnknownMemberType=false
 # pyright: reportUnknownVariableType=false
 # pyright: reportUnknownArgumentType=false
+from typing import TYPE_CHECKING, Any, override
 
-from typing import Any, override, TYPE_CHECKING
-
+from ..config import get_cache_settings
 from ..exceptions import InvalidEmbeddingDimensionException
 from ._base import BaseEmbedder
 
@@ -97,8 +97,10 @@ class OllamaEmbedder(BaseEmbedder):
         self._client_lock = threading.Lock()
 
     @override
-    def api_key_required(self, api_key: str) -> None:
-        if api_key is None:
+    def api_key_required(self, api_key: str | None) -> None:
+        _settings = get_cache_settings()
+
+        if api_key is None and _settings.ollama_api_key is None:
             msg = "OllamaEmbedder requires an API key"
             raise ValueError(msg)
 
