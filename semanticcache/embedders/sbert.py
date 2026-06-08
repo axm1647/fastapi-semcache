@@ -85,10 +85,19 @@ class SBERTEmbedder(BaseEmbedder):
                 rate-limited access.
         """
         _warn_huggingface_not_for_production()
+        self.api_key_required(api_key)
         SentenceTransformer = _require_sentence_transformers()
         self._model_name = model_name
         self._model = SentenceTransformer(model_name, token=api_key)
         self._normalize_embeddings: bool = normalize_embeddings
+
+    @override
+    def api_key_required(self, api_key: str) -> None:
+        warnings.warn(
+            "SBERTEmbedder uses the API key for private models and rate-limited access",
+            UserWarning,
+            stacklevel=2,
+        )
 
     @property
     @override

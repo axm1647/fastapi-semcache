@@ -100,6 +100,7 @@ class VoyageEmbedder(BaseEmbedder):
         """
         voyageai_mod, aiohttp_mod = _require_voyageai_and_aiohttp()
         self._dimensions = BaseEmbedder.require_positive_dim(dimensions)
+        self.api_key_required(api_key)
         self._model_name = model_name
         self._output_dimension = output_dimension
         self._input_type = input_type
@@ -109,6 +110,13 @@ class VoyageEmbedder(BaseEmbedder):
         self._vo_client = voyageai_mod.Client(api_key=api_key)
         self._session = None
         self._session_lock = threading.Lock()
+
+
+    @override
+    def api_key_required(self, api_key: str) -> None:
+        if api_key is None:
+            msg = "VoyageEmbedder requires an API key"
+            raise ValueError(msg)
 
     def _get_session(self) -> Any:
         """Return a lazily constructed ``aiohttp.ClientSession``.

@@ -88,12 +88,19 @@ class OllamaEmbedder(BaseEmbedder):
 
         openai_mod: ModuleType = _require_openai()
         self._dimensions = BaseEmbedder.require_positive_dim(dimensions)
+        self.api_key_required(api_key)
         self._model_name = stripped_model
         self._openai = openai_mod
         self._api_key = api_key
         self._base_url = base_url.rstrip("/")
         self._client = None
         self._client_lock = threading.Lock()
+
+    @override
+    def api_key_required(self, api_key: str) -> None:
+        if api_key is None:
+            msg = "OllamaEmbedder requires an API key"
+            raise ValueError(msg)
 
     def _resolved_api_key(self) -> str:
         """Return the Bearer token for ``AsyncOpenAI``.

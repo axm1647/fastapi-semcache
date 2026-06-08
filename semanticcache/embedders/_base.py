@@ -36,3 +36,6 @@ class BaseEmbedder(ABC):
             msg = "embedding_dim must be positive"
             raise InvalidEmbeddingDimensionException(msg)
         return dim
+
+    @abstractmethod
+    def api_key_required(self, api_key: str) -> None: ...

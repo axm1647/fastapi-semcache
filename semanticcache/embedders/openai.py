@@ -95,6 +95,7 @@ class OpenAIEmbedder(BaseEmbedder):
         """
         openai, tiktoken = _require_openai()
         self._dimensions = BaseEmbedder.require_positive_dim(dimensions)
+        self.api_key_required(api_key)
         self._model_name = model_name
         self._send_dimensions_to_api = send_dimensions_to_api
         self._openai = openai
@@ -103,6 +104,13 @@ class OpenAIEmbedder(BaseEmbedder):
         self._client = None
         self._client_lock = threading.Lock()
         self._encoding = _encoding_for_model(tiktoken, model_name)
+
+    
+    @override
+    def api_key_required(self, api_key: str) -> None:
+        if api_key is None:
+            msg = "OpenAIEmbedder requires an API key"
+            raise ValueError(msg)
 
     def _get_client(self) -> "AsyncOpenAI":
         """Return a lazily constructed ``AsyncOpenAI`` client.

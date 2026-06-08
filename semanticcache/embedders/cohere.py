@@ -108,6 +108,7 @@ class CohereEmbedder(BaseEmbedder):
         """
         cohere_mod = _require_cohere()
         self._dimensions = BaseEmbedder.require_positive_dim(dimensions)
+        self.api_key_required(api_key)
         self._model_name = model_name
         self._input_type = input_type
         self._output_dimension = output_dimension
@@ -117,6 +118,12 @@ class CohereEmbedder(BaseEmbedder):
         self._cohere = cohere_mod
         self._client = None
         self._client_lock = threading.Lock()
+
+    @override
+    def api_key_required(self, api_key: str) -> None:
+        if api_key is None:
+            msg = "CohereEmbedder requires an API key"
+            raise ValueError(msg)
 
     def _get_client(self) -> Any:
         """Return a lazily constructed ``cohere.AsyncClient``.
