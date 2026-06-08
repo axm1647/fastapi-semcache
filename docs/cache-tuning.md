@@ -294,6 +294,20 @@ SELECT cron.schedule(
 
 Replace `sc_<table_hash>` with the actual table name (derived from `cache_namespace` and `embedding_dim`; visible in Postgres `\dt sc_*`).
 
+## Postgres schema management
+
+By default (**`SEMANTIC_CACHE_PG_ENSURE_SCHEMA=true`**, `CacheSettings.pg_ensure_schema`) the library runs `AsyncPgVectorStore.ensure_schema` on first cache use. That creates the cache table (if missing), HNSW and supporting indexes, and applies additive column migrations for older tables.
+
+Set **`SEMANTIC_CACHE_PG_ENSURE_SCHEMA=false`** when:
+
+- schema is owned by migrations, Terraform, or a DBA workflow;
+- the application database role must not hold `CREATE TABLE` / `CREATE INDEX` privileges;
+- you want to review or tune HNSW index parameters before building on a large dataset.
+
+When disabled, the library opens the connection pool but skips runtime DDL. Cache reads and writes require a pre-provisioned table with the expected columns and indexes; missing schema surfaces as Postgres errors from the underlying queries.
+
+The `vector` extension must still be installed in the database (for example via `CREATE EXTENSION vector` in init scripts). `ensure_schema` does not create the extension today.
+
 
 ## Timeout tuning
 

@@ -107,6 +107,7 @@ class CacheSettings:
         threshold: float | None = None,
         rejection_threshold: Any = _UNSET,
         pg_uri: str | None = None,
+        pg_ensure_schema: bool | None = None,
         redis_uri: str | None = None,
         redis_ttl_seconds: int | None = None,
         pg_ttl_days: Any = _UNSET,
@@ -162,6 +163,10 @@ class CacheSettings:
             rejection_threshold: Optional stricter second-stage cutoff. Must be >=
                 threshold when set. Pass ``None`` explicitly to disable.
             pg_uri: PostgreSQL URI with pgvector extension.
+            pg_ensure_schema: When True (default), create cache tables and indexes on
+                first use via ``AsyncPgVectorStore.ensure_schema``. Set False when
+                schema is managed externally (migrations, DBA) or the DB role lacks
+                DDL privileges.
             redis_uri: Redis URI; empty or whitespace-only disables Redis.
             redis_ttl_seconds: Default TTL for Redis-cached responses in seconds.
             pg_ttl_days: Optional TTL for Postgres cache rows in fractional days.
@@ -274,6 +279,14 @@ class CacheSettings:
             self.pg_uri: str = pg_uri
         else:
             self.pg_uri = os.getenv("SEMANTIC_CACHE_PG_URI", "")
+
+        # ---- pg_ensure_schema --------------------------------------------
+        if pg_ensure_schema is not None:
+            self.pg_ensure_schema: bool = pg_ensure_schema
+        else:
+            self.pg_ensure_schema = _parse_bool(
+                os.getenv("SEMANTIC_CACHE_PG_ENSURE_SCHEMA"), default=True
+            )
 
         # ---- redis_uri ---------------------------------------------------
         if redis_uri is not None:
@@ -768,6 +781,7 @@ class CacheSettings:
                 "threshold",
                 "rejection_threshold",
                 "pg_uri",
+                "pg_ensure_schema",
                 "redis_uri",
                 "redis_ttl_seconds",
                 "pg_ttl_days",

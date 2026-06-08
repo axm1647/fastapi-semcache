@@ -126,6 +126,28 @@ def test_cache_settings_configure_pgvector_hnsw_defaults() -> None:
 
 
 @pytest.mark.asyncio
+async def test_ensure_open_skips_schema_when_pg_ensure_schema_false() -> None:
+    """When runtime DDL is disabled, ``ensure_schema`` is not invoked on first use."""
+    settings = CacheSettings(
+        redis_uri=" ",
+        pg_uri="postgresql://mock/mock",
+        require_cache_scope=False,
+        pg_ensure_schema=False,
+    )
+    cache = _make_cache(_FixedEmbedder(), settings=settings)
+    mock_vs = AsyncMock()
+    mock_vs.open = AsyncMock()
+    mock_vs.ensure_schema = AsyncMock()
+    mock_vs.similarity_search_top_k = AsyncMock(return_value=[])
+    cache._vector_store = mock_vs
+
+    await cache.get("hello world")
+
+    mock_vs.open.assert_awaited_once()
+    mock_vs.ensure_schema.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_get_miss_when_store_returns_none() -> None:
     """Vector miss yields ``is_hit`` False and empty payload."""
     cache = _make_cache(_FixedEmbedder())

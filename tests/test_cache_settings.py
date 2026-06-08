@@ -48,6 +48,17 @@ def test_require_cache_scope_defaults_false() -> None:
     assert CacheSettings().require_cache_scope is False
 
 
+def test_pg_ensure_schema_defaults_true() -> None:
+    """Runtime DDL is enabled by default for zero-config local setups."""
+    assert CacheSettings().pg_ensure_schema is True
+
+
+def test_pg_ensure_schema_can_be_disabled() -> None:
+    """Operators can opt out when schema is managed externally."""
+    settings = CacheSettings(pg_ensure_schema=False)
+    assert settings.pg_ensure_schema is False
+
+
 def test_blank_log_digest_key_uses_process_default() -> None:
     """Replace blank ``log_digest_key`` with a non-empty process-local secret."""
     settings = CacheSettings(log_digest_key="   ")

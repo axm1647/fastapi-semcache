@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **`CacheSettings.pg_ensure_schema`** (`SEMANTIC_CACHE_PG_ENSURE_SCHEMA`, default **`true`**): controls whether `SemanticCache` runs `AsyncPgVectorStore.ensure_schema` on first use. Set to **`false`** when cache tables and indexes are managed externally or the application database role lacks DDL privileges.
+
 ## [0.4.6] - 2026-06-04
 
 ### Changed (breaking)

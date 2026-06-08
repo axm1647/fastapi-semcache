@@ -322,11 +322,12 @@ class SemanticCache:
                 timeout_seconds=self._store_timeout_seconds,
                 work=self._vector_store.open(),
             )
-            await self._with_timeout(
-                operation="db_ensure_schema",
-                timeout_seconds=self._store_timeout_seconds,
-                work=self._vector_store.ensure_schema(),
-            )
+            if self._settings.pg_ensure_schema:
+                await self._with_timeout(
+                    operation="db_ensure_schema",
+                    timeout_seconds=self._store_timeout_seconds,
+                    work=self._vector_store.ensure_schema(),
+                )
             self._pg_open = True
 
     async def get(
