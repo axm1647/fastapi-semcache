@@ -87,6 +87,39 @@ def test_embedding_dim_mismatch_raises() -> None:
         )
 
 
+def test_semantic_cache_requires_embedder_when_custom_default() -> None:
+    """Bare SemanticCache() fails when embedder_type is custom (the default)."""
+    settings = CacheSettings(
+        redis_uri=" ",
+        pg_uri="postgresql://mock/mock",
+        require_cache_scope=False,
+    )
+    with pytest.raises(ValueError, match="pass embedder="):
+        SemanticCache(
+            pg_uri="postgresql://mock/mock",
+            redis_uri="",
+            settings=settings,
+        )
+
+
+def test_semantic_cache_accepts_custom_embedder_with_custom_type() -> None:
+    """Custom embedder= works when embedder_type remains custom (default)."""
+    emb = _FixedEmbedder(dim=4)
+    settings = CacheSettings(
+        redis_uri=" ",
+        pg_uri="postgresql://mock/mock",
+        require_cache_scope=False,
+        embedder_type="custom",
+    )
+    cache = SemanticCache(
+        embedder=emb,
+        pg_uri="postgresql://mock/mock",
+        redis_uri="",
+        settings=settings,
+    )
+    assert cache._embedder is emb
+
+
 def _make_cache(
     embedder: BaseEmbedder, *, settings: CacheSettings | None = None
 ) -> SemanticCache:

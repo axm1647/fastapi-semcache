@@ -12,7 +12,7 @@ from .types import EmbedderType
 _DEFAULT_LOG_DIGEST_KEY = secrets.token_hex(32)
 
 _VALID_EMBEDDER_TYPES: frozenset[str] = frozenset(
-    ("huggingface", "openai", "cohere", "voyage", "ollama")
+    ("custom", "huggingface", "openai", "cohere", "voyage", "ollama")
 )
 _VALID_RESPONSE_MODES: frozenset[str] = frozenset(("buffered", "tee"))
 _VALID_HIT_RESPONSE_MODES: frozenset[str] = frozenset(("single", "stream"))
@@ -183,8 +183,9 @@ class CacheSettings:
                 ``None`` explicitly to disable.
             upstream_timeout_seconds: Timeout budget for upstream ASGI call. Pass
                 ``None`` explicitly to disable.
-            embedder_type: Embedder backend (``openai``, ``cohere``, ``voyage``,
-                ``huggingface``, ``ollama``).
+            embedder_type: Embedder backend (``custom``, ``openai``, ``cohere``,
+                ``voyage``, ``huggingface``, ``ollama``). Default ``custom``: pass
+                ``embedder=`` to ``SemanticCache`` with a ``BaseEmbedder`` subclass.
             hugging_face_api_key: Hugging Face API key.
             openai_api_key: OpenAI API key.
             cohere_api_key: Cohere API key.
@@ -423,7 +424,7 @@ class CacheSettings:
         if embedder_type is not None:
             _raw_et = embedder_type
         else:
-            _raw_et = os.getenv("SEMANTIC_CACHE_EMBEDDER_TYPE", "huggingface")
+            _raw_et = os.getenv("SEMANTIC_CACHE_EMBEDDER_TYPE", "custom")
         if _raw_et not in _VALID_EMBEDDER_TYPES:
             raise ValueError(
                 f"embedder_type must be one of {sorted(_VALID_EMBEDDER_TYPES)}, "

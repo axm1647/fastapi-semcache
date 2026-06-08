@@ -16,6 +16,7 @@ CacheSource = Literal[
 
 
 EmbedderType = Literal[
+    "custom",
     "huggingface",
     "openai",
     "cohere",

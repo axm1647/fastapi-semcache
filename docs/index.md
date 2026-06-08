@@ -79,9 +79,13 @@ from typing import Any
 from fastapi import FastAPI
 
 from semanticcache import SemanticCache, SemanticCacheMiddleware
+from semanticcache.embedders import BaseEmbedder
+
+class MyEmbedder(BaseEmbedder):
+    ...
 
 app = FastAPI()
-cache = SemanticCache()
+cache = SemanticCache(embedder=MyEmbedder(...))
 app.add_middleware(SemanticCacheMiddleware, cache=cache)
 
 
@@ -107,7 +111,7 @@ pip install "fastapi-semcache[proxy]"
 ```python
 from semanticcache import SemanticCache, create_semantic_cache_proxy_app
 
-cache = SemanticCache()
+cache = SemanticCache(embedder=MyEmbedder(...))  # or set SEMANTIC_CACHE_EMBEDDER_TYPE
 app = create_semantic_cache_proxy_app(
     upstream="http://127.0.0.1:11434",
     cache=cache,
@@ -133,7 +137,7 @@ See [Cache Tuning](cache-tuning.md) for concrete configuration examples.
 
 ### Embedders
 
-The default factory (`get_embedder`) reads `SEMANTIC_CACHE_EMBEDDER_TYPE` and constructs a built-in embedder. You can also subclass `BaseEmbedder` and pass any custom embedder directly:
+The default mode is **custom**: subclass `BaseEmbedder` and pass your instance to `SemanticCache(embedder=...)`. To use a built-in backend instead, set `SEMANTIC_CACHE_EMBEDDER_TYPE` to `openai`, `cohere`, `voyage`, `huggingface`, or `ollama`; `get_embedder()` then constructs the matching embedder when you omit `embedder=`:
 
 ```python
 cache = SemanticCache(embedder=MyEmbedder(...), settings=get_cache_settings())
@@ -173,7 +177,7 @@ app.add_middleware(YourAuthMiddleware)
 |---|---|---|
 | `SEMANTIC_CACHE_PG_URI` | _(required)_ | PostgreSQL connection string |
 | `SEMANTIC_CACHE_PG_ENSURE_SCHEMA` | `true` | Create cache tables and indexes on first use; set `false` for externally managed schema |
-| `SEMANTIC_CACHE_EMBEDDER_TYPE` | `huggingface` | Embedder backend (`openai`, `cohere`, `voyage`, `huggingface`, `ollama`). `huggingface` loads PyTorch in-process; use hosted backends in production. |
+| `SEMANTIC_CACHE_EMBEDDER_TYPE` | `custom` | `custom` (default): pass `embedder=` to `SemanticCache`. Built-in: `openai`, `cohere`, `voyage`, `huggingface`, `ollama`. `huggingface` loads PyTorch in-process; use hosted backends in production. |
 | `SEMANTIC_CACHE_THRESHOLD` | `0.95` | Primary cosine similarity gate \[0.0, 1.0] |
 | `SEMANTIC_CACHE_TOP_K_CANDIDATES` | `1` | Max nearest-neighbor candidates from pgvector |
 | `SEMANTIC_CACHE_REJECTION_THRESHOLD` | _(unset)_ | Optional stricter second-stage cutoff |

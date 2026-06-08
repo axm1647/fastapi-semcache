@@ -9,6 +9,21 @@ from semanticcache.config import CacheSettings
 from semanticcache.embedders import get_embedder
 from semanticcache.exceptions import NotSupportedEmbedderException
 
+_TEST_PG_URI = "postgresql://mock/mock"
+
+
+def test_cache_settings_defaults_to_custom_embedder_type() -> None:
+    """Unset embedder type selects custom mode (pass embedder= to SemanticCache)."""
+    settings = CacheSettings(pg_uri=_TEST_PG_URI)
+    assert settings.embedder_type == "custom"
+
+
+def test_get_embedder_raises_for_custom_type() -> None:
+    """Factory does not build custom embedders; callers pass embedder= instead."""
+    settings = CacheSettings(pg_uri=_TEST_PG_URI, embedder_type="custom")
+    with pytest.raises(ValueError, match="pass embedder="):
+        get_embedder(settings)
+
 
 def test_cohere_embedder_constructed_from_settings(
     monkeypatch: pytest.MonkeyPatch,
@@ -36,6 +51,7 @@ def test_cohere_embedder_constructed_from_settings(
 
     monkeypatch.setattr(embedders_mod, "CohereEmbedder", _TrackingCohere)
     settings = CacheSettings(
+        pg_uri=_TEST_PG_URI,
         embedder_type="cohere",
         cohere_embedding_model="embed-v4.0",
         cohere_embedding_dimensions=1536,
@@ -72,7 +88,7 @@ def test_cohere_embedder_factory_uses_defaults_when_model_and_dims_unset(
             captured["api_key"] = api_key
 
     monkeypatch.setattr(embedders_mod, "CohereEmbedder", _TrackingCohere)
-    settings = CacheSettings(embedder_type="cohere")
+    settings = CacheSettings(pg_uri=_TEST_PG_URI, embedder_type="cohere")
     _ = get_embedder(settings)
     assert captured["model_name"] == embedders_mod.COHERE_DEFAULT_MODEL
     assert captured["dimensions"] == embedders_mod.COHERE_DEFAULT_DIMENSIONS
@@ -87,7 +103,7 @@ def test_cohere_embedder_factory_uses_defaults_when_model_and_dims_unset(
 def test_invalid_embedder_type_raises_validation_error(embedder_type: str) -> None:
     """Reject embedder types outside the allowed literal union at settings parse time."""
     with pytest.raises(ValueError):
-        CacheSettings(embedder_type=embedder_type)  # type: ignore[arg-type]
+        CacheSettings(pg_uri=_TEST_PG_URI, embedder_type=embedder_type)  # type: ignore[arg-type]
 
 
 def test_huggingface_embedder_receives_settings_api_key(
@@ -106,6 +122,7 @@ def test_huggingface_embedder_receives_settings_api_key(
 
     monkeypatch.setattr(embedders_mod, "SBERTEmbedder", _TrackingSBERT)
     settings = CacheSettings(
+        pg_uri=_TEST_PG_URI,
         embedder_type="huggingface",
         hugging_face_api_key="hf-from-settings",
     )
@@ -117,10 +134,12 @@ def test_huggingface_embedder_receives_settings_api_key(
 def test_ollama_requires_model_and_dimensions() -> None:
     """Ollama embedder type rejects settings without model id or dimension."""
     with pytest.raises(ValueError):
-        CacheSettings(embedder_type="ollama")
+        CacheSettings(pg_uri=_TEST_PG_URI, embedder_type="ollama")
     with pytest.raises(ValueError):
         CacheSettings(
-            embedder_type="ollama", ollama_embedding_model="qwen3-embedding"
+            pg_uri=_TEST_PG_URI,
+            embedder_type="ollama",
+            ollama_embedding_model="qwen3-embedding",
         )
 
 
@@ -148,6 +167,7 @@ def test_ollama_embedder_constructed_from_settings(
 
     monkeypatch.setattr(embedders_mod, "OllamaEmbedder", _TrackingOllama)
     settings = CacheSettings(
+        pg_uri=_TEST_PG_URI,
         embedder_type="ollama",
         ollama_embedding_model="my-embed-model",
         ollama_embedding_dimensions=1024,
@@ -187,6 +207,7 @@ def test_voyage_embedder_constructed_from_settings(
 
     monkeypatch.setattr(embedders_mod, "VoyageEmbedder", _TrackingVoyage)
     settings = CacheSettings(
+        pg_uri=_TEST_PG_URI,
         embedder_type="voyage",
         voyage_embedding_model="voyage-4-lite",
         voyage_embedding_dimensions=512,
@@ -223,7 +244,7 @@ def test_voyage_embedder_factory_uses_defaults_when_model_and_dims_unset(
             captured["api_key"] = api_key
 
     monkeypatch.setattr(embedders_mod, "VoyageEmbedder", _TrackingVoyage)
-    settings = CacheSettings(embedder_type="voyage")
+    settings = CacheSettings(pg_uri=_TEST_PG_URI, embedder_type="voyage")
     _ = get_embedder(settings)
     assert captured["model_name"] == embedders_mod.VOYAGE_DEFAULT_MODEL
     assert captured["dimensions"] == embedders_mod.VOYAGE_DEFAULT_DIMENSIONS

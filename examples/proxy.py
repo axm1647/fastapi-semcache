@@ -31,6 +31,7 @@ if TYPE_CHECKING:
 
 # Proxy traffic usually includes Authorization headers. Opt in with
 # SEMANTIC_CACHE_CACHE_AUTHORIZED_REQUESTS=true if you want those requests cached.
+# Set SEMANTIC_CACHE_EMBEDDER_TYPE (e.g. openai) or pass embedder= to SemanticCache.
 cache = SemanticCache(settings=get_cache_settings())
 upstream = "https://api.openai.com/v1"
 

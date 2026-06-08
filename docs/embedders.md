@@ -6,7 +6,9 @@ If you want to avoid those stacks, or you already host embeddings elsewhere, imp
 
 ## Built-in embedders: `get_embedder` vs constructor arguments
 
-**`get_embedder(settings)`** (used automatically when you omit **`embedder=`** on **`SemanticCache`**) reads **`CacheSettings.embedder_type`** (environment **`SEMANTIC_CACHE_EMBEDDER_TYPE`**) and the matching settings fields. It constructs **`SBERTEmbedder`** or **`OpenAIEmbedder`** with **no** **`model_name`**, **`dimensions`**, **`base_url`**, or other constructor overrides for those two backends (they use **class defaults**, for example **`text-embedding-3-small`** / **`1536`** on **`OpenAIEmbedder`**, or **`sentence-transformers/all-MiniLM-L6-v2`** on **`SBERTEmbedder`**).
+**`CacheSettings.embedder_type`** defaults to **`custom`**. In that mode you **must** pass **`embedder=`** to **`SemanticCache`** with a **`BaseEmbedder`** subclass; **`get_embedder()`** is not used.
+
+**`get_embedder(settings)`** runs only when you omit **`embedder=`** on **`SemanticCache`** and **`embedder_type`** is a built-in backend (set **`SEMANTIC_CACHE_EMBEDDER_TYPE`** to **`openai`**, **`cohere`**, **`voyage`**, **`huggingface`**, or **`ollama`**). It reads the matching settings fields. It constructs **`SBERTEmbedder`** or **`OpenAIEmbedder`** with **no** **`model_name`**, **`dimensions`**, **`base_url`**, or other constructor overrides for those two backends (they use **class defaults**, for example **`text-embedding-3-small`** / **`1536`** on **`OpenAIEmbedder`**, or **`sentence-transformers/all-MiniLM-L6-v2`** on **`SBERTEmbedder`**).
 
 When **`embedder_type`** is **`ollama`**, settings **must** include **`ollama_embedding_model`** and **`ollama_embedding_dimensions`** (environment **`SEMANTIC_CACHE_OLLAMA_EMBEDDING_MODEL`** and **`SEMANTIC_CACHE_OLLAMA_EMBEDDING_DIMENSIONS`**). There is no safe library default across Qwen, Nomic, and other models; the declared width must match the running model and your pgvector column.
 

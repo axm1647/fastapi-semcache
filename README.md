@@ -203,7 +203,7 @@ You can combine extras, for example **`pip install "fastapi-semcache[redis,embed
 > clients cannot forge. See [docs/cache-tuning.md](docs/cache-tuning.md) for
 > details.
 
-Add `SemanticCacheMiddleware` to your app and reuse one `SemanticCache` instance for all requests. Configure Postgres, Redis, and the embedder with **`SEMANTIC_CACHE_*`** environment variables (see `.env.example`). By default only **`POST`** requests are intercepted; the middleware derives cache-key text from JSON bodies using `query`, `prompt`, `input`, or chat-style `messages` (see `default_extract_query` in `semanticcache.middleware`). Successful responses whose body parses as a **JSON object** are candidates for storage, and cache hits replay the original HTTP status and response metadata.
+Add `SemanticCacheMiddleware` to your app and reuse one `SemanticCache` instance for all requests. Configure Postgres and Redis with **`SEMANTIC_CACHE_*`** environment variables (see `.env.example`). Wire embeddings by passing **`embedder=`** (default) or by setting **`SEMANTIC_CACHE_EMBEDDER_TYPE`** to a built-in backend. By default only **`POST`** requests are intercepted; the middleware derives cache-key text from JSON bodies using `query`, `prompt`, `input`, or chat-style `messages` (see `default_extract_query` in `semanticcache.middleware`). Successful responses whose body parses as a **JSON object** are candidates for storage, and cache hits replay the original HTTP status and response metadata.
 
 **`SEMANTIC_CACHE_PG_URI`** is required. Set it to your PostgreSQL connection string (e.g. `postgresql://user:pass@localhost:5432/semanticcache`). By default (**`SEMANTIC_CACHE_PG_ENSURE_SCHEMA=true`**) the library creates a dedicated pgvector table on first use, scoped to the embedder's `cache_namespace` and vector dimension. Set **`SEMANTIC_CACHE_PG_ENSURE_SCHEMA=false`** when your team manages DDL externally (migrations, DBA) or the application database role lacks `CREATE` privileges. Each embedder configuration gets its own table: the pgvector index covers only the rows for that model, so it stays compact and ANN probes scan fewer candidates. Separate tables also isolate autovacuum scheduling so a high-write model does not contend with a quiet one, and you can reindex or drop one model's table without touching any other.
 
@@ -215,9 +215,13 @@ from typing import Any
 from fastapi import FastAPI
 
 from semanticcache import SemanticCache, SemanticCacheMiddleware
+from semanticcache.embedders import BaseEmbedder
+
+class MyEmbedder(BaseEmbedder):
+    ...
 
 app = FastAPI()
-cache = SemanticCache()
+cache = SemanticCache(embedder=MyEmbedder(...))
 app.add_middleware(SemanticCacheMiddleware, cache=cache)
 
 
@@ -256,7 +260,7 @@ async def extract_query(request: Request, body: bytes) -> str | None:
     return None
 
 app = FastAPI()
-cache = SemanticCache()
+cache = SemanticCache(embedder=MyEmbedder(...))
 app.add_middleware(
     SemanticCacheMiddleware,
     cache=cache,
@@ -331,7 +335,7 @@ Minimal programmatic setup:
 ```python
 from semanticcache import SemanticCache, create_semantic_cache_proxy_app
 
-cache = SemanticCache()
+cache = SemanticCache(embedder=MyEmbedder(...))  # or set SEMANTIC_CACHE_EMBEDDER_TYPE
 app = create_semantic_cache_proxy_app(
     upstream="http://127.0.0.1:11434",
     cache=cache,

@@ -33,6 +33,11 @@ def get_embedder(settings: CacheSettings | None = None) -> BaseEmbedder:
         NotSupportedEmbedderException: If ``embedder_type`` is not supported.
     """
     resolved = settings if settings is not None else get_cache_settings()
+    if resolved.embedder_type == "custom":
+        raise ValueError(
+            "embedder_type is 'custom'. get_embedder() does not instantiate custom "
+            "embedders; pass embedder= to SemanticCache(...) instead."
+        )
     if resolved.embedder_type == "huggingface":
         return SBERTEmbedder(api_key=resolved.hugging_face_api_key)
     if resolved.embedder_type == "openai":

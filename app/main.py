@@ -21,6 +21,7 @@ def _build_app() -> FastAPI:
         FastAPI application passed to uvicorn.
     """
     upstream = os.getenv("SEMANTIC_CACHE_PROXY_UPSTREAM", "http://127.0.0.1:11434")
+    # Set SEMANTIC_CACHE_EMBEDDER_TYPE to a built-in backend, or pass embedder=.
     cache = SemanticCache(settings=get_cache_settings())
     app = create_semantic_cache_proxy_app(
         upstream=upstream,

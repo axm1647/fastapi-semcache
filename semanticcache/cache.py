@@ -188,7 +188,8 @@ class SemanticCache:
             pg_uri: PostgreSQL URI with pgvector; defaults to settings.
             redis_uri: Redis URI for TTL response cache. Empty or whitespace-only
                 disables Redis (Postgres only).
-            embedder: Custom embedder; defaults to ``get_embedder(settings)``.
+            embedder: ``BaseEmbedder`` instance. Required when ``embedder_type`` is
+                ``custom`` (the default). Otherwise defaults to ``get_embedder(settings)``.
             embedding_dim: When set, must equal ``embedder.embedding_dim`` (safety
                 check). The embedder defines the vector width and storage namespace.
             settings: Base settings object; defaults to ``get_cache_settings()``.
@@ -202,9 +203,17 @@ class SemanticCache:
             redis_uri if redis_uri is not None else self._settings.redis_uri
         )
         self.redis_uri = resolved_redis
-        self._embedder = (
-            embedder if embedder is not None else get_embedder(self._settings)
-        )
+        if embedder is not None:
+            self._embedder = embedder
+        elif self._settings.embedder_type == "custom":
+            raise ValueError(
+                "No embedder instance provided. The default mode is custom: "
+                "subclass BaseEmbedder and pass embedder= to SemanticCache(...). "
+                "Alternatively, set SEMANTIC_CACHE_EMBEDDER_TYPE to a built-in "
+                "backend (openai, cohere, voyage, huggingface, ollama)."
+            )
+        else:
+            self._embedder = get_embedder(self._settings)
         resolved_dim = self._embedder.embedding_dim
         if embedding_dim is not None and embedding_dim != resolved_dim:
             msg = (
