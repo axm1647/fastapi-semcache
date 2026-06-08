@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **`CacheSettings.pg_ensure_schema`** (`SEMANTIC_CACHE_PG_ENSURE_SCHEMA`, default **`true`**): controls whether `SemanticCache` runs `AsyncPgVectorStore.ensure_schema` on first use. Set to **`false`** when cache tables and indexes are managed externally or the application database role lacks DDL privileges.
+- **`CacheSettings`** now validates **`pg_uri`** as not empty and fails on this
 
 ### Changed (breaking)
 
